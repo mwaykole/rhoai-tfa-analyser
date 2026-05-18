@@ -18,7 +18,17 @@ flowchart TD
     fetch --> routing{Route to debugger skill}
     detect --> routing
 
-    routing --> serving
+    subgraph serving["Model Serving"]
+        ms[debugger-model-server]
+        ks[debugger-kserve]
+        llmd[debugger-llmd]
+        mm[debugger-modelmesh]
+    end
+
+    routing --> ms
+    routing --> ks
+    routing --> llmd
+    routing --> mm
     routing --> sr[debugger-serving-runtimes]
     routing --> ls[debugger-llama-stack]
     routing --> pipe[debugger-pipelines]
@@ -31,14 +41,10 @@ flowchart TD
     routing --> ch[debugger-cluster-health]
     routing --> gen[debugger-generic]
 
-    subgraph serving[Model Serving]
-        ms[debugger-model-server]
-        ks[debugger-kserve]
-        llmd[debugger-llmd]
-        mm[debugger-modelmesh]
-    end
-
-    serving --> memory[(memory/ learnings)]
+    ms --> memory[(Memory Learnings)]
+    ks --> memory
+    llmd --> memory
+    mm --> memory
     sr --> memory
     ls --> memory
     pipe --> memory
