@@ -1,0 +1,25 @@
+{
+  "id": "tfa-plugin",
+  "name": "TFA - Test Failure Analyzer",
+  "version": "1.0.0",
+  "description": "RHOAI/ODH test failure analysis plugin for Claude Code. Routes ReportPortal failures to component-specific debugger skills with domain knowledge, read-only cluster inspection, and persistent memory/learning.",
+  "author": "Milind Waykole <mwaykole@redhat.com>",
+  "skills": [
+    "skills/tfa-orchestrator",
+    "skills/debugger-model-server",
+    "skills/debugger-kserve",
+    "skills/debugger-llmd",
+    "skills/debugger-modelmesh",
+    "skills/debugger-serving-runtimes",
+    "skills/debugger-llama-stack",
+    "skills/debugger-pipelines",
+    "skills/debugger-model-registry",
+    "skills/debugger-workbenches",
+    "skills/debugger-dashboard",
+    "skills/debugger-trustyai",
+    "skills/debugger-rhoai-operators",
+    "skills/debugger-distributed",
+    "skills/debugger-cluster-health",
+    "skills/debugger-generic"
+  ]
+}

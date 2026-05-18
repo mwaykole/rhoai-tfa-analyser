@@ -1,0 +1,6 @@
+FROM quay.io/aipcc-cicd/claudio:v0.6.1
+
+COPY . /home/claudio/tfa-plugin/
+RUN pip install --no-cache-dir -r /home/claudio/tfa-plugin/requirements.txt
+RUN claude plugin marketplace add /home/claudio/tfa-plugin
+RUN claude plugin install --scope user tfa-plugin
