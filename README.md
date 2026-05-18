@@ -18,10 +18,7 @@ flowchart TD
     fetch --> routing{Route to debugger skill}
     detect --> routing
 
-    routing --> ms[debugger-model-server]
-    routing --> ks[debugger-kserve]
-    routing --> llmd[debugger-llmd]
-    routing --> mm[debugger-modelmesh]
+    routing --> serving
     routing --> sr[debugger-serving-runtimes]
     routing --> ls[debugger-llama-stack]
     routing --> pipe[debugger-pipelines]
@@ -34,10 +31,14 @@ flowchart TD
     routing --> ch[debugger-cluster-health]
     routing --> gen[debugger-generic]
 
-    ms --> memory[(memory/ learnings)]
-    ks --> memory
-    llmd --> memory
-    mm --> memory
+    subgraph serving[Model Serving]
+        ms[debugger-model-server]
+        ks[debugger-kserve]
+        llmd[debugger-llmd]
+        mm[debugger-modelmesh]
+    end
+
+    serving --> memory[(memory/ learnings)]
     sr --> memory
     ls --> memory
     pipe --> memory
@@ -53,12 +54,19 @@ flowchart TD
 
 ## ReportPortal Component Mapping
 
+### Model Serving (umbrella)
+
 | RP Component | Debugger Skill | Domain |
 |---|---|---|
 | `Model_server` | `debugger-model-server` | vLLM, TGI, Caikit, S3 model download |
 | `kserve` | `debugger-kserve` | InferenceService, Knative, Serverless |
 | `llmd` | `debugger-llmd` | LLMInferenceService, LeaderWorkerSet |
 | `modelmesh` | `debugger-modelmesh` | Multi-model serving |
+
+### Other Components
+
+| RP Component | Debugger Skill | Domain |
+|---|---|---|
 | `serving_runtimes` | `debugger-serving-runtimes` | ServingRuntime config |
 | `llama_stack` | `debugger-llama-stack` | LlamaStack operator |
 | `Pipelines` | `debugger-pipelines` | DSP v2, Argo workflows |
