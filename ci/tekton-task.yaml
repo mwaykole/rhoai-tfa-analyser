@@ -1,0 +1,100 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: tfa-analyze
+  labels:
+    app.kubernetes.io/part-of: tfa
+spec:
+  description: >
+    Analyze RHOAI/ODH test failures from ReportPortal using the TFA Claudio plugin.
+    Routes failures to component-specific debugger skills and posts results back to RP.
+  params:
+    - name: launch-id
+      type: string
+      description: ReportPortal launch ID to analyze
+    - name: component
+      type: string
+      default: ""
+      description: "Optional: specific component to analyze (e.g., Model_server)"
+    - name: tfa-image
+      type: string
+      default: "quay.io/aipcc-cicd/tfa-claudio:latest"
+      description: TFA Claudio container image
+  steps:
+    - name: analyze
+      image: $(params.tfa-image)
+      env:
+        - name: RP_URL
+          valueFrom:
+            secretKeyRef:
+              name: reportportal-creds
+              key: url
+        - name: RP_PROJECT
+          valueFrom:
+            secretKeyRef:
+              name: reportportal-creds
+              key: project
+        - name: RP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: reportportal-creds
+              key: username
+        - name: RP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: reportportal-creds
+              key: password
+        - name: CLAUDE_CODE_USE_VERTEX
+          value: "1"
+        - name: CLOUD_ML_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: vertex-ai-creds
+              key: project-id
+        - name: ANTHROPIC_VERTEX_REGION
+          valueFrom:
+            secretKeyRef:
+              name: vertex-ai-creds
+              key: region
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/var/run/secrets/gcp/key.json"
+      args:
+        - "Analyze launch $(params.launch-id) $(params.component) failures and post results to RP"
+      volumeMounts:
+        - name: memory
+          mountPath: /home/claudio/tfa-plugin/memory
+        - name: gcp-credentials
+          mountPath: /var/run/secrets/gcp
+          readOnly: true
+  volumes:
+    - name: memory
+      persistentVolumeClaim:
+        claimName: tfa-learnings-pvc
+    - name: gcp-credentials
+      secret:
+        secretName: vertex-ai-creds
+        items:
+          - key: service-account-key
+            path: key.json
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: tfa-nightly-analysis
+  labels:
+    app.kubernetes.io/part-of: tfa
+spec:
+  description: Run TFA analysis on all failed components from a nightly launch.
+  params:
+    - name: launch-id
+      type: string
+      description: ReportPortal launch ID from the nightly run
+  tasks:
+    - name: analyze-all
+      taskRef:
+        name: tfa-analyze
+      params:
+        - name: launch-id
+          value: $(params.launch-id)
+        - name: component
+          value: ""

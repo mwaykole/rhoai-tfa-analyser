@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'LAUNCH_ID', description: 'ReportPortal launch ID to analyze')
+        string(name: 'COMPONENT', defaultValue: '', description: 'Optional: specific component to analyze (e.g., Model_server)')
+    }
+
+    environment {
+        RP_URL = credentials('rp-url')
+        RP_PROJECT = 'ods_ci'
+        RP_USERNAME = credentials('rp-username')
+        RP_PASSWORD = credentials('rp-password')
+        CLOUD_ML_PROJECT_ID = credentials('gcp-project-id')
+        ANTHROPIC_VERTEX_REGION = 'us-east5'
+        GOOGLE_APPLICATION_CREDENTIALS = credentials('gcp-sa-key')
+        TFA_IMAGE = 'quay.io/aipcc-cicd/tfa-claudio:latest'
+    }
+
+    stages {
+        stage('Analyze Failures') {
+            steps {
+                script {
+                    def component = params.COMPONENT ? "${params.COMPONENT} " : ""
+                    def prompt = "Analyze launch ${params.LAUNCH_ID} ${component}failures and post results to RP"
+
+                    sh """
+                    podman run --rm \
+                      -e RP_URL=\${RP_URL} \
+                      -e RP_PROJECT=\${RP_PROJECT} \
+                      -e RP_USERNAME=\${RP_USERNAME} \
+                      -e RP_PASSWORD=\${RP_PASSWORD} \
+                      -e CLAUDE_CODE_USE_VERTEX=1 \
+                      -e CLOUD_ML_PROJECT_ID=\${CLOUD_ML_PROJECT_ID} \
+                      -e ANTHROPIC_VERTEX_REGION=\${ANTHROPIC_VERTEX_REGION} \
+                      -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json \
+                      -v \${GOOGLE_APPLICATION_CREDENTIALS}:/tmp/gcp-key.json:ro \
+                      -v tfa-memory:/home/claudio/tfa-plugin/memory \
+                      \${TFA_IMAGE} \
+                      "${prompt}"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'TFA analysis failed. Check container logs for details.'
+        }
+        success {
+            echo 'TFA analysis completed. Results posted to ReportPortal.'
+        }
+    }
+}
