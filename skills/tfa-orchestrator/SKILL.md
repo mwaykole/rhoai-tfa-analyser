@@ -5,7 +5,7 @@ description: >
   detects the component, routes to the appropriate debugger skill, collects results,
   posts back to RP, and stores learnings. Trigger phrases: "analyze launch",
   "tfa analyze", "classify failures", "debug test failures", "reportportal failures".
-allowed-tools: Bash(*/tfa-orchestrator/scripts/*.py:*),Bash(*/tfa-orchestrator/scripts/*.sh:*),Bash(*/tools/*/rp_client.py:*),Bash(*/tools/must-gather/*.py:*)
+allowed-tools: Bash(*/tfa-orchestrator/scripts/*.py:*),Bash(*/tfa-orchestrator/scripts/*.sh:*),Bash(*/tools/*/rp_client.py:*),Bash(*/tools/jenkins-client/*.py:*),Bash(*/tools/must-gather/*.py:*)
 ---
 
 # TFA Orchestrator
@@ -16,18 +16,19 @@ The orchestrator coordinates the full test failure analysis pipeline.
 
 1. **Load memory** — Read `memory/orchestrator/learnings.json` for known correlations
 2. **Fetch failures** — Run `scripts/fetch_rp_failures.py --launch-id <ID> [--component <name>]`
-3. **Cluster health** — If `oc` is logged in, run `scripts/cluster_health.sh` (read-only)
-4. **Route to debugger** — `scripts/detect_component.py` maps the RP component name to a skill:
+3. **Fetch Jenkins logs** (if `JENKINS_URL` is set) — Run `tools/jenkins-client/jenkins_client.py --build <NUM> --errors` to extract error context from Jenkins build logs. Use `--failed-stages` to identify which pipeline stages failed.
+4. **Cluster health** — If `oc` is logged in, run `scripts/cluster_health.sh` (read-only)
+5. **Route to debugger** — `scripts/detect_component.py` maps the RP component name to a skill:
    - Input: RP top-level suite name (e.g., `Model_server`, `kserve`, `Pipelines`)
    - Output: skill directory name (e.g., `debugger-model-server`, `debugger-kserve`)
    - Uses normalization (case, underscores/hyphens/spaces)
    - Falls back to `debugger-generic` for unrecognized components
-5. **Invoke debugger** — Invoke the matched `debugger-*` skill with logs + cluster data
+6. **Invoke debugger** — Invoke the matched `debugger-*` skill with logs + cluster data
    - Debugger reads `memory/components/<name>/learnings.json` before analysis
    - Debugger writes new discoveries after analysis
-6. **Collect results** — Aggregate all classifications
-7. **Post to RP** — Run `scripts/post_rp_results.py` to push results back to ReportPortal
-8. **Store learnings** — Run `scripts/store_learning.py` to persist:
+7. **Collect results** — Aggregate all classifications
+8. **Post to RP** — Run `scripts/post_rp_results.py` to push results back to ReportPortal
+9. **Store learnings** — Run `scripts/store_learning.py` to persist:
    - New patterns discovered during this run
    - Cross-component correlations detected
    - Run summary appended to `run_history.json`
