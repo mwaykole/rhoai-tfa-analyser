@@ -14,12 +14,16 @@ This skill handles the `Model_server` / `Model Server` component from ReportPort
 
 ## Resource Hierarchy
 
-```
-InferenceService (ISVC) / LLMInferenceService (LLMISVC)
-  └─ Predictor / Transformer / Explainer
-       └─ Knative Revision (serverless) OR Deployment (raw)
-            └─ Pod(s)
-                 └─ Containers: storage-initializer, kserve-container, queue-proxy
+```mermaid
+graph TD
+    ISVC[InferenceService / LLMInferenceService] --> PTE[Predictor / Transformer / Explainer]
+    PTE --> KR[Knative Revision - serverless]
+    PTE --> DEP[Deployment - raw mode]
+    KR --> POD[Pod]
+    DEP --> POD
+    POD --> C1[storage-initializer]
+    POD --> C2[kserve-container]
+    POD --> C3[queue-proxy]
 ```
 
 ## Known Failure Patterns

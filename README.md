@@ -8,35 +8,47 @@ This plugin replaces the standalone TFA CLI with a set of Claude Code skills whe
 
 ## Architecture
 
-```
-User/CI triggers Claude Code
-       │
-       ▼
-┌─────────────────────┐
-│  tfa-orchestrator   │  ← Routes failures to component debuggers
-│  SKILL.md           │
-└────────┬────────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌────────┐ ┌────────┐
-│ fetch  │ │ detect │  ← Fetch from RP, detect component
-│ _rp_   │ │ _comp  │
-└────┬───┘ └────┬───┘
-     │          │
-     ▼          ▼
-┌──────────────────────────────────────────────┐
-│  debugger-model-server   │ debugger-kserve   │
-│  debugger-llmd           │ debugger-pipelines│
-│  debugger-workbenches    │ debugger-dashboard│
-│  ... (14 component skills + 1 generic)       │
-└──────────────────────────┬───────────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │   memory/   │  ← Persistent learnings per component
-                    │ learnings   │
-                    └─────────────┘
+```mermaid
+flowchart TD
+    trigger[User / CI Trigger] --> orchestrator[tfa-orchestrator]
+
+    orchestrator --> fetch[Fetch failures from RP]
+    orchestrator --> detect[Detect component]
+
+    fetch --> routing{Route to debugger skill}
+    detect --> routing
+
+    routing --> ms[debugger-model-server]
+    routing --> ks[debugger-kserve]
+    routing --> llmd[debugger-llmd]
+    routing --> mm[debugger-modelmesh]
+    routing --> sr[debugger-serving-runtimes]
+    routing --> ls[debugger-llama-stack]
+    routing --> pipe[debugger-pipelines]
+    routing --> mr[debugger-model-registry]
+    routing --> wb[debugger-workbenches]
+    routing --> dash[debugger-dashboard]
+    routing --> tai[debugger-trustyai]
+    routing --> ops[debugger-rhoai-operators]
+    routing --> dist[debugger-distributed]
+    routing --> ch[debugger-cluster-health]
+    routing --> gen[debugger-generic]
+
+    ms --> memory[(memory/ learnings)]
+    ks --> memory
+    llmd --> memory
+    mm --> memory
+    sr --> memory
+    ls --> memory
+    pipe --> memory
+    mr --> memory
+    wb --> memory
+    dash --> memory
+    tai --> memory
+    ops --> memory
+    dist --> memory
+    ch --> memory
+    gen --> memory
 ```
 
 ## ReportPortal Component Mapping

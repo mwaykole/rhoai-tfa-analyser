@@ -14,11 +14,15 @@ This skill handles the `llmd` component from ReportPortal launches.
 
 ## Resource Hierarchy
 
-```
-LLMInferenceService (LLMISVC)
-  └─ LeaderWorkerSet (LWS)
-       └─ Leader Pod + Worker Pods
-            └─ Containers: model runtime (vLLM/TGI), sidecar
+```mermaid
+graph TD
+    LLMISVC[LLMInferenceService] --> LWS[LeaderWorkerSet]
+    LWS --> LEADER[Leader Pod]
+    LWS --> WORKER[Worker Pods]
+    LEADER --> RT1[model runtime - vLLM/TGI]
+    LEADER --> SC1[sidecar]
+    WORKER --> RT2[model runtime - vLLM/TGI]
+    WORKER --> SC2[sidecar]
 ```
 
 ## Dependencies

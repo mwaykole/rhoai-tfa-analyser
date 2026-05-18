@@ -14,12 +14,16 @@ This skill handles the `kserve` component from ReportPortal launches.
 
 ## Resource Hierarchy
 
-```
-InferenceService (ISVC)
-  └─ Predictor / Transformer / Explainer
-       └─ Knative Revision (serverless) OR Deployment (raw)
-            └─ Pod(s)
-                 └─ Containers: storage-initializer, kserve-container, queue-proxy
+```mermaid
+graph TD
+    ISVC[InferenceService] --> PTE[Predictor / Transformer / Explainer]
+    PTE --> KR[Knative Revision - serverless]
+    PTE --> DEP[Deployment - raw mode]
+    KR --> POD[Pod]
+    DEP --> POD
+    POD --> C1[storage-initializer]
+    POD --> C2[kserve-container]
+    POD --> C3[queue-proxy]
 ```
 
 ## Deployment Modes
