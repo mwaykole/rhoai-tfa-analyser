@@ -1,0 +1,17 @@
+# Runtime-cloned architecture context (fetched fresh on each analysis run)
+architecture-context/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+.cursor/

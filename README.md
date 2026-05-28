@@ -1,10 +1,19 @@
 # RHOAI TFA Analyser - Claudio Plugin
 
-A Claude Code plugin that analyzes RHOAI/ODH test failures from ReportPortal using component-specific debugger skills with persistent memory.
+A Claude Code plugin that analyzes RHOAI/ODH test failures using component-specific debugger skills, live architecture context, and persistent memory. Accepts any input — ReportPortal launches, log files, directories, URLs, or Jenkins builds.
 
 ## Overview
 
-This plugin replaces the standalone TFA CLI with a set of Claude Code skills where Claude IS the LLM. Each ReportPortal component gets a dedicated debugger skill containing domain knowledge, failure patterns, and diagnosis workflows.
+This plugin replaces the standalone TFA CLI with a set of Claude Code skills where **Claude IS the LLM**. Scripts fetch data and enforce workflows; intelligence comes from `SKILL.md` files and Claude's reasoning.
+
+- **Free-form prompts** — describe what you want analyzed in natural language
+- **17 skills** — orchestrator + 15 component debuggers + architecture reference
+- **Architecture context** — clones latest RHOAI architecture docs from GitHub on every run
+- **Persistent memory** — learnings accumulate across runs for better accuracy over time
+- **Few-shot learning** — retrieves similar past failures from memory to guide classification
+- **Schema validation** — enforces strict classification output format with auto-fix
+- **HTML reports** — detailed dark-themed report with severity charts and per-failure cards
+- **Live logging** — stream analysis progress via `/tmp/analysis.log`
 
 ## Architecture
 
@@ -12,11 +21,17 @@ This plugin replaces the standalone TFA CLI with a set of Claude Code skills whe
 flowchart TD
     trigger[User / CI Trigger] --> orchestrator[tfa-orchestrator]
 
-    orchestrator --> fetch[Fetch failures from RP]
-    orchestrator --> detect[Detect component]
+    orchestrator --> parse[Parse prompt: RP launch / file path / URL / directory]
+    orchestrator --> memory_read[(Retrieve few-shot examples from memory)]
+    orchestrator --> gather[Gather failure data from source]
+    orchestrator --> archsync[Sync architecture-context from GitHub]
 
-    fetch --> routing{Route to debugger skill}
-    detect --> routing
+    archsync --> archref[architecture-reference skill]
+    archref -->|CRDs, ports, RBAC, deps, data flows| routing
+
+    parse --> gather
+    memory_read -->|Similar past failures| routing
+    gather --> routing{Route to debugger skill}
 
     subgraph serving["Model Serving"]
         ms[debugger-model-server]
@@ -41,135 +56,316 @@ flowchart TD
     routing --> ch[debugger-cluster-health]
     routing --> gen[debugger-generic]
 
-    ms --> memory[(Memory Learnings)]
-    ks --> memory
-    llmd --> memory
-    mm --> memory
-    sr --> memory
-    ls --> memory
-    pipe --> memory
-    mr --> memory
-    wb --> memory
-    dash --> memory
-    tai --> memory
-    ops --> memory
-    dist --> memory
-    ch --> memory
-    gen --> memory
+    ms --> validate[Validate results schema]
+    ks --> validate
+    llmd --> validate
+    mm --> validate
+    sr --> validate
+    ls --> validate
+    pipe --> validate
+    mr --> validate
+    wb --> validate
+    dash --> validate
+    tai --> validate
+    ops --> validate
+    dist --> validate
+    ch --> validate
+    gen --> validate
+
+    validate --> report[Generate HTML report]
+    report --> store_run[Store run + learnings in memory]
+    store_run --> memory[(Memory Learnings)]
 ```
 
-## ReportPortal Component Mapping
+## Prompt Examples
 
-### Model Serving (umbrella)
+The prompt is **free-form** — just describe what you want analyzed:
+
+| Prompt | What happens |
+|---|---|
+| `Analyze launch 10748 Model_server failures and post results to RP` | Fetches failures from ReportPortal, routes to debugger-model-server, posts classifications back |
+| `Analyze /workspace/logs/kserve-test.log` | Reads the file, auto-detects kserve component from log content, runs debugger-kserve |
+| `Analyze all logs in /var/jenkins/results/` | Scans the directory, analyzes each log file, detects components per file |
+| `Analyze https://reportportal.example.com/ui/#ods_ci/launches/all/10748` | Extracts launch ID from URL, fetches from RP |
+| `Analyze Jenkins build 542 kserve failures` | Pulls Jenkins build logs, routes to debugger-kserve |
+| `Analyze /tmp/must-gather/logs/ for rhoai_operators issues` | Reads logs from must-gather, routes to debugger-rhoai-operators |
+| `Analyze /data/pipeline-run.log for pipelines failures` | Reads the file, routes to debugger-pipelines |
+
+## Skills
+
+### Orchestrator
+
+| Skill | Description |
+|---|---|
+| `tfa-orchestrator` | Central coordinator — parses prompt, gathers data, routes to debuggers, posts results, stores learnings |
+| `architecture-reference` | Provides live RHOAI architecture docs (CRDs, ports, RBAC, dependencies, data flows) from [architecture-context](https://github.com/mwaykole/architecture-context) |
+
+### Component Debuggers
 
 | RP Component | Debugger Skill | Domain |
 |---|---|---|
-| `Model_server` | `debugger-model-server` | vLLM, TGI, Caikit, S3 model download |
-| `kserve` | `debugger-kserve` | InferenceService, Knative, Serverless |
-| `llmd` | `debugger-llmd` | LLMInferenceService, LeaderWorkerSet |
-| `modelmesh` | `debugger-modelmesh` | Multi-model serving |
-
-### Other Components
-
-| RP Component | Debugger Skill | Domain |
-|---|---|---|
+| `Model_server` | `debugger-model-server` | vLLM, TGI, Caikit, S3 model download, GPU/OOM |
+| `kserve` | `debugger-model-server/debugger-kserve` | InferenceService, Knative, Serverless, RawDeployment |
+| `llmd` | `debugger-model-server/debugger-llmd` | LLMInferenceService, LeaderWorkerSet |
+| `modelmesh` | `debugger-model-server/debugger-modelmesh` | Multi-model serving |
 | `serving_runtimes` | `debugger-serving-runtimes` | ServingRuntime config |
-| `llama_stack` | `debugger-llama-stack` | LlamaStack operator |
+| `llama_stack` | `debugger-llama-stack` | LlamaStack / OGX operator |
 | `Pipelines` | `debugger-pipelines` | DSP v2, Argo workflows |
 | `model_registry` | `debugger-model-registry` | Model Registry, MariaDB |
 | `workbenches` | `debugger-workbenches` | Jupyter notebooks, PVC |
 | `Dashboard` | `debugger-dashboard` | RHOAI Dashboard UI |
 | `trustyai` | `debugger-trustyai` | Model explainability |
-| `rhoai_operators` | `debugger-rhoai-operators` | DSC/DSCI/Operator |
+| `rhoai_operators` | `debugger-rhoai-operators` | DSC/DSCI/Operator lifecycle |
 | `Distributed` | `debugger-distributed` | Kueue, CodeFlare, Ray |
-| `cluster_health` | `debugger-cluster-health` | Pre-flight checks |
+| `cluster_health` | `debugger-cluster-health` | Pre-flight cluster checks |
+| *(any other)* | `debugger-generic` | Fallback for unrecognized components |
+
+## Project Structure
+
+```
+.claude-plugin/
+  plugin.json                     # Plugin manifest — registers all 17 skills
+skills/
+  tfa-orchestrator/               # Central coordinator
+    SKILL.md
+    scripts/
+      fetch_rp_failures.py        # Fetch failures from ReportPortal
+      detect_component.py         # Map component name → debugger skill
+      post_rp_results.py          # Post classifications back to RP
+      validate_results.py         # Schema validation + auto-fix for classification output
+      generate_report.py          # HTML report generator (dark-themed dashboard)
+      retrieve_examples.py        # Few-shot retrieval — find similar past failures in memory
+      store_run.py                # Store run summary + auto-learn each classification
+      store_learning.py           # Persist individual learnings to memory
+      query_learnings.py          # Query memory for known patterns
+      promote_learnings.py        # Promote high-confidence patterns into SKILL.md
+      cluster_health.sh           # Read-only cluster health check
+  architecture-reference/         # Live RHOAI architecture docs
+    SKILL.md
+    scripts/
+      arch_lookup.py              # Clone/pull architecture-context, query component data
+  debugger-model-server/          # Model serving (parent skill + sub-orchestration)
+    SKILL.md                      # Sub-orchestrates to kserve/llmd/modelmesh
+    scripts/
+      inspect_serving.sh          # Model runtime pod inspection
+      parse_serving_logs.py
+    debugger-kserve/              # InferenceService, Knative, routing
+      SKILL.md
+      scripts/
+    debugger-llmd/                # LLMInferenceService, LeaderWorkerSet
+      SKILL.md
+      scripts/
+    debugger-modelmesh/           # Shared runtimes, model cache, gRPC
+      SKILL.md
+      scripts/
+  debugger-*/                     # 11 other component-specific debugger skills
+    SKILL.md                      # Domain knowledge, failure patterns, diagnosis steps
+    scripts/
+      inspect_*.sh                # Read-only cluster inspection (oc get/describe/logs)
+      parse_*_logs.py             # Log pattern extraction
+tools/
+  common.sh                       # Shared shell helpers
+  jenkins-client/                 # Jenkins API client
+  rp-client/                      # ReportPortal client
+  must-gather/                    # Must-gather parser
+memory/
+  orchestrator/                   # Cross-component correlations + run history
+  components/                     # Per-component learnings
+    model-server/                 # Model serving stack learnings
+      learnings.json              # Model server (vLLM, TGI, Caikit) learnings
+      kserve/learnings.json       # KServe learnings
+      llmd/learnings.json         # LLMD learnings
+      modelmesh/learnings.json    # ModelMesh learnings
+    ...                           # 11 other component dirs
+architecture-context/             # Cloned at runtime (gitignored), not committed
+Containerfile.claudio             # Container image definition
+entrypoint.sh                     # Container entrypoint
+```
 
 ## Usage
 
-```bash
-# Install plugin into Claude Code
-claude plugin install --scope user .
+### Local (Claude Code plugin)
 
-# Trigger analysis (Claude Code will invoke the orchestrator)
-# "Analyze launch 10748 failures for Model_server component"
+```bash
+claude plugin install --scope user .
 ```
 
-## Container Build & Runtime
+Then use any prompt:
+
+```
+"Analyze launch 10748 Model_server failures and post results to RP"
+"Analyze /workspace/logs/kserve-test.log"
+"Analyze all logs in /var/jenkins/results/"
+```
+
+### Container Build
 
 ```bash
 podman build -f Containerfile.claudio -t tfa-claudio:latest .
 ```
 
-### Running with Google Vertex AI
+### Container Run
 
-The container uses Claude Code with Google Vertex AI as the LLM backend (no Anthropic API key needed).
+The prompt is the container argument. Mount volumes for log files, outputs, and credentials.
 
-**Required environment variables:**
+**Outputs:**
+- `/tmp/analysis.log` — live analysis log (stream with `tail -f` or mount out)
+- `/tmp/tfa_report.html` — detailed HTML report with charts and per-failure cards
+- `/tmp/tfa_results.json` — raw classification results as JSON
+
+```bash
+# RP launch analysis — mount /tmp/tfa-output to get the HTML report + live log
+podman run --rm \
+  -e RP_URL=https://reportportal.example.com \
+  -e RP_PROJECT=ods_ci \
+  -e RP_TOKEN="$RP_TOKEN" \
+  -e CLAUDE_CODE_USE_VERTEX=1 \
+  -e ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json \
+  -v /path/to/sa-key.json:/tmp/gcp-key.json:ro,z \
+  -v /tmp/tfa-output:/tmp:z \
+  tfa-claudio:latest \
+  "Analyze launch 10748 Dashboard failures"
+# After run: open /tmp/tfa-output/tfa_report.html in browser
+
+# Watch live analysis progress from another terminal
+tail -f /tmp/tfa-output/analysis.log
+
+# Analyze a local log file
+podman run --rm \
+  -e CLAUDE_CODE_USE_VERTEX=1 \
+  -e ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json \
+  -v /path/to/sa-key.json:/tmp/gcp-key.json:ro,z \
+  -v /home/user/jenkins-logs/kserve-run.log:/data/kserve-run.log:ro,z \
+  -v /tmp/tfa-output:/tmp:z \
+  tfa-claudio:latest \
+  "Analyze /data/kserve-run.log for kserve failures"
+
+# Analyze a directory of logs from Jenkins
+podman run --rm \
+  -e CLAUDE_CODE_USE_VERTEX=1 \
+  -e ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json \
+  -v /path/to/sa-key.json:/tmp/gcp-key.json:ro,z \
+  -v /var/jenkins/workspace/ods-ci/test-results/:/workspace/results/:ro,z \
+  -v /tmp/tfa-output:/tmp:z \
+  tfa-claudio:latest \
+  "Analyze all failures in /workspace/results/"
+```
+
+### Environment Variables
+
+**Always required:**
+
+| Variable | Description |
+|---|---|
+| `CLOUD_ML_PROJECT_ID` | Google Cloud project ID with Vertex AI enabled |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP service account JSON key (inside container) |
+
+**Required for ReportPortal:**
 
 | Variable | Description |
 |---|---|
 | `RP_URL` | ReportPortal base URL |
 | `RP_PROJECT` | ReportPortal project name (e.g., `ods_ci`) |
-| `RP_USERNAME` | ReportPortal username |
-| `RP_PASSWORD` | ReportPortal password |
-| `CLOUD_ML_PROJECT_ID` | Google Cloud project ID with Vertex AI enabled |
-| `ANTHROPIC_VERTEX_REGION` | Vertex AI region (default: `us-east5`) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP service account JSON key (inside container) |
+| `RP_TOKEN` | ReportPortal API token (bearer auth) |
 
 **Optional:**
 
-| Variable | Description |
-|---|---|
-| `CLAUDE_CODE_USE_VERTEX` | Set to `1` to enable Vertex AI (default: `1`) |
-| `TFA_PROMPT` | Alternative to passing prompt as container argument |
+| Variable | Default | Description |
+|---|---|---|
+| `CLAUDE_CODE_USE_VERTEX` | `1` | Enable Vertex AI backend |
+| `ANTHROPIC_VERTEX_REGION` | `us-east5` | Vertex AI region |
+| `TFA_PROMPT` | — | Alternative to passing prompt as container argument |
+| `ARCH_CONTEXT_REPO` | `https://github.com/mwaykole/architecture-context.git` | Architecture-context git URL |
+| `ARCH_CONTEXT_BRANCH` | `main` | Architecture-context branch to track |
+| `JENKINS_URL` | — | Jenkins server URL (enables Jenkins log fetching) |
+| `TFA_LOG_FILE` | `/tmp/analysis.log` | Path for live analysis log |
+| `TFA_REPORT_DIR` | `/tmp` | Directory for HTML report and results JSON |
 
-### Run Examples
+## Architecture Context
 
-```bash
-# Single launch analysis
-podman run --rm \
-  -e RP_URL=https://reportportal.example.com \
-  -e RP_PROJECT=ods_ci \
-  -e RP_USERNAME=user \
-  -e RP_PASSWORD=pass \
-  -e CLAUDE_CODE_USE_VERTEX=1 \
-  -e CLOUD_ML_PROJECT_ID=my-gcp-project \
-  -e ANTHROPIC_VERTEX_REGION=us-east5 \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json \
-  -v /path/to/sa-key.json:/tmp/gcp-key.json:ro \
-  -v tfa-memory:/home/claudio/tfa-plugin/memory \
-  tfa-claudio:latest \
-  "Analyze launch 10748 Model_server failures and post results to RP"
+On every run, the system clones (or pulls) the latest [architecture-context](https://github.com/mwaykole/architecture-context) repository. This provides structured architecture documentation for every RHOAI component — CRDs, network ports, RBAC, dependencies, and data flows — generated from actual source code analysis.
+
+- **Container runs:** The entrypoint pre-clones the repo before Claude starts
+- **Local runs:** `arch_lookup.py` clones on first invocation, then does a fast `git pull` on subsequent calls
+- **Always fresh:** Every container start gets the latest architecture docs from GitHub
+- **Overlays:** Manual corrections between regeneration cycles (e.g., component renames, version bumps) are checked automatically
+- **28 RHOAI versions:** From `rhoai-2.6` through `rhoai-3.5-ea.1`, ~58 components per version
+
+The `architecture-context/` directory is gitignored — it only exists at runtime, never committed.
+
+## Classification Output
+
+Each debugger returns a JSON result per failure:
+
+```json
+{
+  "test_id": "12345",
+  "test_name": "test_deploy_model_vllm",
+  "classification": "product_bug",
+  "severity": "high",
+  "confidence": 0.92,
+  "root_cause": "LeaderWorkerSet CRD not installed on cluster",
+  "recommendation": "Install LWS CRD before deploying LLMD",
+  "jira_pattern": "RHOAIENG-*",
+  "rp_defect_type": "pb001"
+}
 ```
 
-### CI/CD Integration
-
-Example pipelines are provided in the `ci/` directory:
-
-- **`ci/Jenkinsfile`** — Jenkins pipeline with credentials binding and memory volume
-- **`ci/tekton-task.yaml`** — Tekton Task + Pipeline for OpenShift Pipelines with PVC-backed memory and GCP secret mount
-
-### No Claude SDK Required
-
-- The Claudio base image already has Claude Code installed
-- Claude Code handles the Vertex AI connection internally via environment variables
-- TFA scripts only fetch data (ReportPortal, cluster) — they make no direct LLM API calls
-- Intelligence comes from Claude Code reading `SKILL.md` files and reasoning about the data
+| Category | RP Defect Code | When |
+|---|---|---|
+| Product Bug | `pb001` | Real defect in RHOAI component |
+| Test Automation Issue | `ab001` | Test code problem (short timeout, bad assertion) |
+| Infrastructure Issue | `si001` | Cluster/env issue (pod crash, auth, GPU, OOM) |
+| Intermittent Failure | `ab_1kbn5su3gqpdt` | Flaky: passes on retry, race condition |
+| No Defect | `nd001` | Expected behavior, test design issue |
+| To Investigate | `ti001` | Insufficient evidence for classification |
 
 ## Memory / Learning Layer
 
-After every analysis run, the system stores learnings in `memory/`:
-- Per-component patterns, corrections, timeout calibrations
-- Cross-component correlations at the orchestrator level
-- Run history for trend analysis
+The memory system forms a closed feedback loop — each run improves the next:
 
-High-confidence learnings (>5 hits, 100% accuracy) can be promoted into SKILL.md files.
+```
+Run N: classify failures → store_run.py → memory/components/*/learnings.json
+                                              ↓
+Run N+1: retrieve_examples.py → few-shot examples → more accurate classification
+                                              ↓
+                                    hit_count incremented for recurring patterns
+                                              ↓
+Periodic: promote_learnings.py → bake high-hit patterns into SKILL.md
+```
+
+**After every run** (`store_run.py`):
+- Run summary written to `memory/orchestrator/run_history.json` (total failures, classification breakdown, severity)
+- Each classification stored as a learning in the matching component's memory
+- Duplicate patterns have `hit_count` incremented instead of creating new entries
+
+**Before each classification** (`retrieve_examples.py`):
+- Searches memory for similar past failures using token overlap similarity
+- Returns top-K examples with their known classification, root cause, and recommendation
+- Higher `hit_count` patterns are boosted (validated across multiple runs)
+
+**Promotion** (`promote_learnings.py`):
+- Patterns with `hit_count >= 5` are promoted into SKILL.md as permanent knowledge
+- Once promoted, they guide Claude without needing retrieval
+
+## Post-Analysis Pipeline
+
+After Claude classifies failures, the entrypoint automatically runs:
+
+1. **Validate** — `validate_results.py --fix` normalizes classification names, clamps confidence to 0-1, fills missing RP defect codes
+2. **Report** — `generate_report.py` produces a standalone HTML report with summary charts and per-failure cards
+3. **Store** — `store_run.py` persists run summary and learnings to memory for future few-shot retrieval
+
+This pipeline runs even if Claude doesn't explicitly call these scripts, ensuring consistent output.
 
 ## Read-Only Cluster Access
 
 All cluster inspect scripts are strictly read-only:
-- Allowed: `oc get`, `oc describe`, `oc logs`
-- Forbidden: `oc delete`, `oc apply`, `oc create`, `oc patch`, `oc edit`
+- Allowed: `oc get`, `oc describe`, `oc logs`, `oc adm must-gather`
+- Forbidden: `oc delete`, `oc apply`, `oc create`, `oc patch`, `oc edit`, `oc scale`
 
 ## Development
 

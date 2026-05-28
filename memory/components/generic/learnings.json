@@ -1,5 +1,21 @@
 {
   "version": "1.0",
   "component": "generic",
-  "learnings": []
+  "learnings": [
+    {
+      "id": "learn-f946ba1f",
+      "timestamp": "2026-05-28T08:13:27.803596+00:00",
+      "last_seen": "2026-05-28T08:13:27.803598+00:00",
+      "type": "new_pattern",
+      "hit_count": 1,
+      "classification": "infrastructure_issue",
+      "severity": "medium",
+      "confidence": 0.99,
+      "test_name": "Namespace cleanup cascade \u2014 ConflictError 409 on all retry runs",
+      "key_error": "kubernetes.dynamic.exceptions.ConflictError: 409 / namespaces already exists (AlreadyExists)",
+      "root_cause": "Test teardown/cleanup did not delete Kubernetes namespaces when the first run failed mid-setup (fixture errors prevent teardown code from running). On all retry runs, pytest attempts to re-create those namespaces and hits ConflictError 409 AlreadyExists: 'test-guardrails-hf-upgrade' (run 2) and 'upgrade-model-server' (run 3). This prevents any retry from even reaching the actual test logic, compounding every underlying failure.",
+      "recommendation": "1) Add a pre-test namespace-cleanup step to the pipeline or use unique per-run namespace suffixes. 2) Implement a finalizer/cleanup job that runs unconditionally after each test execution, regardless of fixture setup failures. 3) Consider using ocp_resources ResourceEdit's context managers consistently so teardown always runs. 4) Use --forked-ns or randomized namespace names to avoid collisions between pipeline retries.",
+      "source": "auto_discovered"
+    }
+  ]
 }

@@ -12,6 +12,12 @@ allowed-tools: Bash(*/debugger-modelmesh/scripts/*.sh:*),Bash(*/debugger-modelme
 ## RP Component
 This skill handles the `modelmesh` component from ReportPortal launches.
 
+## Sub-Orchestration
+This skill is also invoked by `debugger-model-server` when a Model Server failure
+traces back to the ModelMesh layer (shared runtime pods, model loading, gRPC).
+When invoked as a sub-skill, work with the failure data already provided — do not
+re-fetch from RP.
+
 ## Architecture
 
 ModelMesh serves multiple models on shared ServingRuntime pods. Models are loaded/unloaded

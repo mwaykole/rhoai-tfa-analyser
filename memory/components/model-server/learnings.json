@@ -1,5 +1,36 @@
 {
   "version": "1.0",
   "component": "model-server",
-  "learnings": []
+  "learnings": [
+    {
+      "id": "learn-56e8b660",
+      "timestamp": "2026-05-28T08:13:27.803160+00:00",
+      "last_seen": "2026-05-28T08:13:27.803163+00:00",
+      "type": "new_pattern",
+      "hit_count": 1,
+      "classification": "automation_bug",
+      "severity": "high",
+      "confidence": 0.98,
+      "test_name": "test_lmeval_job_pod_lifecycle[model_namespace0-lmevaljob_hf_upgrade0]",
+      "key_error": "utilities.exceptions.MissingParameter: HF access token is not set. Either pass with `--hf-access-token` or set `HF_ACCESS_TOKEN` environment variable  [tests/model_explainability/lm_eval/upgrade/conftest.py:106]",
+      "root_cause": "The 'lmeval_hf_access_token_upgrade' fixture raises MissingParameter because the HuggingFace API access token is not available in the CI environment. The token is required pre-upgrade to create the 'hf-secret' Kubernetes Secret for the LMEval job. Neither the --hf-access-token pytest flag nor the HF_ACCESS_TOKEN environment variable was set in this pipeline run.",
+      "recommendation": "Add the HuggingFace API token to the Jenkins/Vault CI secrets store and inject it as the HF_ACCESS_TOKEN environment variable in the pipeline environment. Alternatively, pass --hf-access-token to the pytest invocation. Verify that the secret binding in the Jenkinsfile is active for the 'rhoai-upgrade' pipeline.",
+      "source": "auto_discovered"
+    },
+    {
+      "id": "learn-1eff0c89",
+      "timestamp": "2026-05-28T08:13:27.803390+00:00",
+      "last_seen": "2026-05-28T08:13:27.803497+00:00",
+      "type": "new_pattern",
+      "hit_count": 2,
+      "classification": "infrastructure_issue",
+      "severity": "critical",
+      "confidence": 0.87,
+      "test_name": "test_serverless_onnx_pre_upgrade_inference",
+      "key_error": "TimeoutExpiredError: Timed Out: 30 / Last exception: ResourceNotFoundError: onnx-serverless has no pods  [utilities/infra.py:757 \u2192 timeout_sampler/__init__.py:179]",
+      "root_cause": "The 'ovms_serverless_inference_service_scope_session' fixture creates an InferenceService 'onnx-serverless' in Serverless/KServe mode but no pods are scheduled within the 30-second pod-creation timeout. ResourceNotFoundError: onnx-serverless has no pods. This indicates the KServe controller or Knative Serving is not processing the ISVC creation \u2014 possible causes: Knative controller not running, Istio sidecar injection issue, missing cluster role bindings, or resource quota limits in the 'upgrade-model-server' namespace.",
+      "recommendation": "1) Check Knative Serving controller and activator pod status in the knative-serving namespace. 2) Verify Istio is correctly configured for the upgrade-model-server namespace (sidecar injection, PeerAuthentication). 3) Check resource quotas and LimitRanges in the namespace. 4) Review kserve-controller-manager logs for ISVC reconciliation errors. 5) Ensure the ServingRuntime 'onnx-serverless' template resolves correctly to the expected container image.",
+      "source": "auto_discovered"
+    }
+  ]
 }

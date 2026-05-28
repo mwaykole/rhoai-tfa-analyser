@@ -1,5 +1,22 @@
 {
   "version": "1.0",
   "description": "Summary of every TFA analysis run for trend analysis",
-  "runs": []
+  "runs": [
+    {
+      "id": "run-fe1c096d",
+      "timestamp": "2026-05-28T08:13:27.802496+00:00",
+      "launch_id": "",
+      "source": "jenkins_log",
+      "total_failures": 9,
+      "by_classification": {
+        "automation_bug": 6,
+        "infrastructure_issue": 3
+      },
+      "by_severity": {
+        "high": 6,
+        "critical": 2,
+        "medium": 1
+      }
+    }
+  ]
 }

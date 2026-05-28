@@ -16,6 +16,28 @@ from pathlib import Path
 MEMORY_BASE = Path(__file__).resolve().parent.parent.parent.parent / "memory"
 SKILLS_BASE = Path(__file__).resolve().parent.parent.parent
 
+SUB_COMPONENT_MAP = {
+    "kserve": "model-server/kserve",
+    "llmd": "model-server/llmd",
+    "modelmesh": "model-server/modelmesh",
+}
+
+SKILL_DIR_MAP = {
+    "kserve": "debugger-model-server/debugger-kserve",
+    "llmd": "debugger-model-server/debugger-llmd",
+    "modelmesh": "debugger-model-server/debugger-modelmesh",
+}
+
+
+def resolve_component_path(component: str) -> str:
+    """Resolve component name to its memory directory path."""
+    return SUB_COMPONENT_MAP.get(component, component)
+
+
+def resolve_skill_dir(component: str) -> str:
+    """Resolve component name to its skill directory path."""
+    return SKILL_DIR_MAP.get(component, f"debugger-{component}")
+
 
 def find_promotable(component: str, min_hits: int = 5) -> list[dict]:
     """Find learnings eligible for promotion.
@@ -32,7 +54,7 @@ def find_promotable(component: str, min_hits: int = 5) -> list[dict]:
     Returns:
         List of learnings ready for promotion
     """
-    path = MEMORY_BASE / "components" / component / "learnings.json"
+    path = MEMORY_BASE / "components" / resolve_component_path(component) / "learnings.json"
     if not path.exists():
         return []
 
@@ -60,7 +82,7 @@ def promote_to_skill(component: str, learnings: list[dict], dry_run: bool = Fals
     Returns:
         List of promoted pattern descriptions
     """
-    skill_dir = SKILLS_BASE / f"debugger-{component}"
+    skill_dir = SKILLS_BASE / resolve_skill_dir(component)
     skill_path = skill_dir / "SKILL.md"
 
     if not skill_path.exists():

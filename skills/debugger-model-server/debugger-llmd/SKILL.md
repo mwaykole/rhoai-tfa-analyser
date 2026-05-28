@@ -12,6 +12,12 @@ allowed-tools: Bash(*/debugger-llmd/scripts/*.sh:*),Bash(*/debugger-llmd/scripts
 ## RP Component
 This skill handles the `llmd` component from ReportPortal launches.
 
+## Sub-Orchestration
+This skill is also invoked by `debugger-model-server` when a Model Server failure
+traces back to the LLMD layer (LLMInferenceService, LeaderWorkerSet, multi-node inference).
+When invoked as a sub-skill, work with the failure data already provided — do not
+re-fetch from RP.
+
 ## Resource Hierarchy
 
 ```mermaid

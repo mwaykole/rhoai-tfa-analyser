@@ -1,5 +1,36 @@
 {
   "version": "1.0",
   "component": "trustyai",
-  "learnings": []
+  "learnings": [
+    {
+      "id": "learn-0d4819eb",
+      "timestamp": "2026-05-28T08:13:27.802582+00:00",
+      "last_seen": "2026-05-28T08:13:27.803051+00:00",
+      "type": "new_pattern",
+      "hit_count": 4,
+      "classification": "automation_bug",
+      "severity": "high",
+      "confidence": 0.97,
+      "test_name": "test_guardrails_hf_detector_unsuitable_input_pre_upgrade",
+      "key_error": "TypeError: TempoStack() takes no arguments  [tests/model_explainability/guardrails/conftest.py:256]",
+      "root_cause": "Fixture 'tempo_stack' calls TempoStack(kind_dict=tempo_stack_dict) but the ocp-resources TempoStack class no longer accepts keyword arguments \u2014 its constructor API changed in a library update. All four guardrails-with-HuggingFace-detectors tests share this fixture and fail identically during setup.",
+      "recommendation": "Update the 'tempo_stack' fixture in tests/model_explainability/guardrails/conftest.py to use the new TempoStack constructor API. Replace TempoStack(kind_dict=...) with the current instantiation pattern (e.g., positional dict or a class-method factory). Pin or update ocp-resources to a version whose TempoStack class accepts kind_dict.",
+      "source": "auto_discovered"
+    },
+    {
+      "id": "learn-a47021f7",
+      "timestamp": "2026-05-28T08:13:27.803272+00:00",
+      "last_seen": "2026-05-28T08:13:27.803275+00:00",
+      "type": "new_pattern",
+      "hit_count": 1,
+      "classification": "automation_bug",
+      "severity": "high",
+      "confidence": 0.95,
+      "test_name": "test_trustyai_service_db_pre_upgrade_inference[model_namespace0-minio_pod0-minio_data_connection0-trustyai_service0]",
+      "key_error": "TypeError: wait_for_mariadb_operator_deployments() got an unexpected keyword argument 'client'  [tests/conftest.py:732]",
+      "root_cause": "The 'mariadb_operator_cr' fixture in tests/conftest.py:732 calls wait_for_mariadb_operator_deployments(mariadb_operator=..., client=admin_client) but the utility function no longer accepts the 'client' keyword argument \u2014 its signature was changed in a recent refactor. This is a call-site/API-contract mismatch between the global conftest and the utility layer.",
+      "recommendation": "In tests/conftest.py line ~732, remove the client=admin_client keyword argument from the wait_for_mariadb_operator_deployments() call to match the updated function signature. If the function still needs the client internally, update the function definition to re-accept and use it, or retrieve the client inside the function directly.",
+      "source": "auto_discovered"
+    }
+  ]
 }

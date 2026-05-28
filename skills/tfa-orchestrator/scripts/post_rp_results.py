@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """Post classification results back to ReportPortal.
 
-Usage:
-    post_rp_results.py --launch-id <ID> --results <results.json>
+In local/Cursor mode, the orchestrator uses MCP rp_update_test_item_issues.
+This script is the fallback for containerized runs where MCP is not available.
 
-Updates test item defect types in RP based on TFA classification.
+Usage:
+    post_rp_results.py --results <results.json>
 """
 
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "tools" / "rp-client"))
+from rp_client import RPClient
 
 DEFECT_MAP = {
     "product_bug": "pb001",
@@ -21,30 +27,35 @@ DEFECT_MAP = {
 }
 
 
-def post_results(launch_id: str, results: list[dict]) -> dict:
-    """Post classification results to ReportPortal.
+def post_results(results: list[dict]) -> dict:
+    """Post classification results to ReportPortal."""
+    client = RPClient()
 
-    Args:
-        launch_id: RP launch ID
-        results: List of classification results with test_id and classification
+    issues = []
+    for r in results:
+        defect_code = DEFECT_MAP.get(r.get("classification", ""), "ti001")
+        comment = f"[TFA] {r.get('root_cause', '')} (confidence: {r.get('confidence', 0):.0%})"
+        issues.append({
+            "testItemId": int(r["test_id"]),
+            "issue": {"issueType": defect_code, "comment": comment},
+        })
 
-    Returns:
-        Summary of posted results
-    """
-    # TODO: Implement using tools/rp-client/rp_client.py
-    raise NotImplementedError("RP client integration pending")
+    if not issues:
+        return {"updated": 0, "message": "No results to post"}
+
+    resp = client.update_defect_types(issues)
+    return {"updated": len(issues), "response": resp}
 
 
 def main():
     parser = argparse.ArgumentParser(description="Post results to RP")
-    parser.add_argument("--launch-id", required=True, help="ReportPortal launch ID")
     parser.add_argument("--results", required=True, help="Path to results JSON file")
     args = parser.parse_args()
 
     with open(args.results) as f:
         results = json.load(f)
 
-    summary = post_results(args.launch_id, results)
+    summary = post_results(results)
     json.dump(summary, sys.stdout, indent=2)
 
 

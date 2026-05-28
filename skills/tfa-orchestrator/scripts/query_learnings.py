@@ -18,13 +18,24 @@ from pathlib import Path
 
 MEMORY_BASE = Path(__file__).resolve().parent.parent.parent.parent / "memory"
 
+SUB_COMPONENT_MAP = {
+    "kserve": "model-server/kserve",
+    "llmd": "model-server/llmd",
+    "modelmesh": "model-server/modelmesh",
+}
+
+
+def resolve_component_path(component: str) -> str:
+    """Resolve component name to its memory directory path."""
+    return SUB_COMPONENT_MAP.get(component, component)
+
 
 def load_all_learnings(component: str | None = None) -> list[dict]:
     """Load learnings from one or all components."""
     results = []
 
     if component:
-        path = MEMORY_BASE / "components" / component / "learnings.json"
+        path = MEMORY_BASE / "components" / resolve_component_path(component) / "learnings.json"
         if path.exists():
             with open(path) as f:
                 data = json.load(f)

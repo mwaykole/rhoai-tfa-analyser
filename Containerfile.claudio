@@ -1,17 +1,17 @@
 FROM quay.io/aipcc-cicd/claudio:v0.6.1
 
+USER root
+
 # Install Python dependencies for TFA scripts
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copy TFA plugin
+# Copy TFA plugin and fix ownership for claudio user
 COPY . /home/claudio/tfa-plugin/
-
-# Register plugin with Claude Code
-RUN claude plugin add /home/claudio/tfa-plugin || true
-
-# Entrypoint handles Vertex AI config and invocation
 COPY entrypoint.sh /home/claudio/entrypoint.sh
-RUN chmod +x /home/claudio/entrypoint.sh
+RUN chown -R claudio:claudio /home/claudio/tfa-plugin /home/claudio/entrypoint.sh && \
+    chmod +x /home/claudio/entrypoint.sh
+
+USER claudio
 
 ENTRYPOINT ["/home/claudio/entrypoint.sh"]

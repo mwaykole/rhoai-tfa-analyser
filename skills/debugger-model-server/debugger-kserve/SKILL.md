@@ -12,6 +12,12 @@ allowed-tools: Bash(*/debugger-kserve/scripts/*.sh:*),Bash(*/debugger-kserve/scr
 ## RP Component
 This skill handles the `kserve` component from ReportPortal launches.
 
+## Sub-Orchestration
+This skill is also invoked by `debugger-model-server` when a Model Server failure
+traces back to the KServe layer (ISVC lifecycle, Knative serving, routing).
+When invoked as a sub-skill, work with the failure data already provided — do not
+re-fetch from RP.
+
 ## Resource Hierarchy
 
 ```mermaid

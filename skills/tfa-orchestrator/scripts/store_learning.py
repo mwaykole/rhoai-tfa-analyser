@@ -19,6 +19,12 @@ from pathlib import Path
 
 MEMORY_BASE = Path(__file__).resolve().parent.parent.parent.parent / "memory"
 
+SUB_COMPONENT_MAP = {
+    "kserve": "model-server/kserve",
+    "llmd": "model-server/llmd",
+    "modelmesh": "model-server/modelmesh",
+}
+
 VALID_TYPES = [
     "new_pattern",
     "correction",
@@ -29,10 +35,15 @@ VALID_TYPES = [
 ]
 
 
+def resolve_component_path(component: str) -> str:
+    """Resolve component name to its memory directory path."""
+    return SUB_COMPONENT_MAP.get(component, component)
+
+
 def get_learnings_path(component: str | None = None) -> Path:
     """Get path to learnings.json for a component or orchestrator."""
     if component:
-        return MEMORY_BASE / "components" / component / "learnings.json"
+        return MEMORY_BASE / "components" / resolve_component_path(component) / "learnings.json"
     return MEMORY_BASE / "orchestrator" / "learnings.json"
 
 
