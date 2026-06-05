@@ -87,7 +87,8 @@ The prompt is **free-form** — just describe what you want analyzed:
 | `Analyze /workspace/logs/kserve-test.log` | Reads the file, auto-detects kserve component from log content, runs debugger-kserve |
 | `Analyze all logs in /var/jenkins/results/` | Scans the directory, analyzes each log file, detects components per file |
 | `Analyze https://reportportal.example.com/ui/#ods_ci/launches/all/10748` | Extracts launch ID from URL, fetches from RP |
-| `Analyze Jenkins build 542 kserve failures` | Pulls Jenkins build logs, routes to debugger-kserve |
+| `Analyze Jenkins build 542 kserve failures` | Pulls Jenkins build logs via local client, routes to debugger-kserve |
+| `Analyze https://myjenkins.redhat.com/job/my_job/542/` | Extracts job path and build number, fetches Jenkins build logs via MCP, and runs analysis |
 | `Analyze /tmp/must-gather/logs/ for rhoai_operators issues` | Reads logs from must-gather, routes to debugger-rhoai-operators |
 | `Analyze /data/pipeline-run.log for pipelines failures` | Reads the file, routes to debugger-pipelines |
 

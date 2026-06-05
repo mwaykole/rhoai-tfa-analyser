@@ -6,7 +6,7 @@ description: >
   of logs, a Jenkins build, or any combination. Parse the prompt to determine the input
   source and act accordingly. Trigger phrases: "analyze launch", "analyze failures",
   "analyze /path/to/logs", "debug test failures", "classify failures", "tfa analyze".
-allowed-tools: mcp__reportportal__rp_get_launch,mcp__reportportal__rp_list_launches,mcp__reportportal__rp_list_test_items,mcp__reportportal__rp_get_test_item,mcp__reportportal__rp_list_logs,mcp__reportportal__rp_search_logs,mcp__reportportal__rp_update_test_item_issues,Bash(*/tfa-orchestrator/scripts/*.py:*),Bash(*/tfa-orchestrator/scripts/*.sh:*),Bash(*/tools/jenkins-client/*.py:*),Bash(*/tools/must-gather/*.py:*),Bash(*/architecture-reference/scripts/*.py:*),Read
+allowed-tools: mcp__reportportal__rp_get_launch,mcp__reportportal__rp_list_launches,mcp__reportportal__rp_list_test_items,mcp__reportportal__rp_get_test_item,mcp__reportportal__rp_list_logs,mcp__reportportal__rp_search_logs,mcp__reportportal__rp_update_test_item_issues,mcp__rhoai-jenkins__get_build_log,mcp__rhoai-jenkins__check_build_status,Bash(*/tfa-orchestrator/scripts/*.py:*),Bash(*/tfa-orchestrator/scripts/*.sh:*),Bash(*/tools/jenkins-client/*.py:*),Bash(*/tools/must-gather/*.py:*),Bash(*/architecture-reference/scripts/*.py:*),Read
 ---
 
 # TFA Orchestrator
@@ -26,6 +26,7 @@ The user's prompt is **free-form**. Parse it to determine the input source:
 | `Analyze launch 10748 Model_server failures` | RP + component filter | MCP: get launch → list SUITE items → find matching suite → list FAILED items under that suite |
 | `Analyze /path/to/test.log for kserve failures` | File + component hint | Read the file, route to debugger-kserve |
 | `Analyze Jenkins build 542 failures` | Jenkins build | `tools/jenkins-client/jenkins_client.py --build 542 --errors` |
+| `Analyze https://myjenkins.redhat.com/job/my_job/542/` | Jenkins URL | Extract job path and build number from URL, use MCP tool: `mcp__rhoai-jenkins__get_build_log(job_path="my_job", build_number=542)` or `tools/jenkins-client/jenkins_client.py` as fallback. |
 
 The user may provide any path — Jenkins workspace, mounted volume, local file — just read
 whatever path they give. No assumptions about mount points.
@@ -45,7 +46,7 @@ whatever path they give. No assumptions about mount points.
      - Either way the data shape is the same: launch metadata, suites, failed items with logs
    - File path → Read the file at the given path
    - Directory → List and read log files in the directory
-   - Jenkins build → `tools/jenkins-client/jenkins_client.py --build <NUM> --errors`
+   - Jenkins build/URL → Try MCP `mcp__rhoai-jenkins__get_build_log(job_path="...", build_number=...)` first, fall back to `tools/jenkins-client/jenkins_client.py --build <NUM> --errors` (optionally with `--job <job_path>`)
    - Multiple sources → Gather from all of them
 5. **Cluster health** (if `oc` is logged in) — Run `scripts/cluster_health.sh` (read-only)
 6. **Detect component** — Determine from:
