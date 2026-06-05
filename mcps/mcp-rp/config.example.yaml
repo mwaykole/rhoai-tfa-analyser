@@ -1,0 +1,20 @@
+# MCP ReportPortal Server Configuration
+# Copy to config.yaml and update with your values
+
+reportportal:
+  url: https://reportportal.example.com
+  token: your-api-token-here
+  # username: your-username
+  # password: your-password
+  project: my_project
+  verify_ssl: true
+
+logging:
+  level: INFO
+  format: json
+
+retry:
+  max_attempts: 3
+  base_delay: 1.0
+  max_delay: 30.0
+  exponential_base: 2.0

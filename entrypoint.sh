@@ -73,6 +73,36 @@ BEFORE classifying each failure, check memory for similar past failures:
 
 log "Starting Claude analysis..."
 
+log "Configuring MCP servers for Claude Code..."
+mkdir -p ~/.claude
+cat > ~/.claude.json << EOF
+{
+  "mcpServers": {
+    "mcp__reportportal": {
+      "command": "python3",
+      "args": ["${PLUGIN_DIR}/mcps/mcp-rp/main.py"],
+      "env": {
+        "RP_URL": "\${RP_URL:-}",
+        "RP_TOKEN": "\${RP_TOKEN:-}",
+        "RP_PROJECT": "\${RP_PROJECT:-}",
+        "PYTHONPATH": "${PLUGIN_DIR}/mcps/mcp-rp:\${PYTHONPATH:-}"
+      }
+    },
+    "mcp__rhoai-jenkins": {
+      "command": "python3",
+      "args": ["${PLUGIN_DIR}/mcps/rhoai-jenkins-mcp/main.py"],
+      "env": {
+        "JENKINS_URL": "\${JENKINS_URL:-}",
+        "JENKINS_USER": "\${JENKINS_USER:-}",
+        "JENKINS_TOKEN": "\${JENKINS_TOKEN:-}",
+        "JENKINS_PASSWORD": "\${JENKINS_TOKEN:-}",
+        "PYTHONPATH": "${PLUGIN_DIR}/mcps/rhoai-jenkins-mcp:\${PYTHONPATH:-}"
+      }
+    }
+  }
+}
+EOF
+
 claude -p --dangerously-skip-permissions --bare --plugin-dir "$PLUGIN_DIR" "$FULL_PROMPT" 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
 

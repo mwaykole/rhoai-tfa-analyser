@@ -1,0 +1,10 @@
+We currently support the following cloud providers in test_matrix_run job Manual mode:
+- "AWS", alias self-managed AWS
+- "GCP", alias self-managed GCP
+- "Managed AWS", alias OSD alias OSD/AWS
+- "Managed GCP", alias OSD alial OSD/GCP
+- "PSI", alias OpenStack OCP
+
+Additional Notes:
+- TEST_PLATFORM: The "Managed" clustes can be provisioned in 2 test platforms: stage and prod
+- SINGLE_NODE_OPENSHIFT: self-managed clusters - except for PSI - can be provisioned with one single node
