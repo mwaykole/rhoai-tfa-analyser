@@ -10,6 +10,7 @@ fi
 # Configure Vertex AI (instead of Anthropic API key)
 export CLAUDE_CODE_USE_VERTEX="${CLAUDE_CODE_USE_VERTEX:-1}"
 export CLOUD_ML_PROJECT_ID="${CLOUD_ML_PROJECT_ID:-${ANTHROPIC_VERTEX_PROJECT_ID:-${GCP_PROJECT_ID:?GCP project ID required}}}"
+export ANTHROPIC_VERTEX_PROJECT_ID="${CLOUD_ML_PROJECT_ID}"
 export ANTHROPIC_VERTEX_REGION="${ANTHROPIC_VERTEX_REGION:-${CLOUD_ML_REGION:-us-east5}}"
 
 # If GOOGLE_APPLICATION_CREDENTIALS is set, verify file exists
@@ -56,20 +57,53 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 SCRIPTS="${PLUGIN_DIR}/skills/tfa-orchestrator/scripts"
+ARCH_LOOKUP="${PLUGIN_DIR}/skills/architecture-reference/scripts/arch_lookup.py"
+
+# Resolve architecture version: env var > extract from prompt > fallback to newest
+RHOAI_VERSION="${RHOAI_VERSION:-}"
+if [[ -z "$RHOAI_VERSION" ]]; then
+    # Try extracting version from the prompt (e.g. "RHOAI version 2.25" or "3.5-ea.1")
+    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '(?i)(?:rhoai|version)\s+(\d+\.\d+(?:[.-]\S+)?)' | grep -oP '\d+\.\d+(?:[.-]\S+)?' | head -1)
+fi
+if [[ -z "$RHOAI_VERSION" ]]; then
+    # Try extracting from Jenkins URL path (e.g. /job/2.25/ or /job/3.5-ea.1/)
+    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '/job/(\d+\.\d+(?:[.-][a-z0-9.]+)?)/' | grep -oP '\d+\.\d+(?:[.-][a-z0-9.]+)?' | head -1)
+fi
+ARCH_VERSION="${RHOAI_VERSION:-newest}"
+log "Architecture version resolved: ${ARCH_VERSION}"
 
 # Append instructions for classification, validation, report, and memory storage
 FULL_PROMPT="${PROMPT}
 
-IMPORTANT: After classification, you MUST do these steps in order:
+IMPORTANT ANALYSIS STEPS — follow in order:
+
+STEP 1: Load architecture context BEFORE classifying.
+For each component being analyzed, run the architecture lookup to understand CRDs, ports,
+RBAC, dependencies, and data flows. This context is critical for accurate classification.
+The RHOAI version for this analysis is: ${ARCH_VERSION}
+- Run: python3 ${ARCH_LOOKUP} --skip-sync --component model_server --version ${ARCH_VERSION} --section all
+- Also run: python3 ${ARCH_LOOKUP} --skip-sync --component kserve --version ${ARCH_VERSION} --section all
+- If the version is not found, try: python3 ${ARCH_LOOKUP} --skip-sync --version ${ARCH_VERSION} --list-components
+  then fall back to --version newest
+- Use the architecture data to understand expected behavior, CRD schemas, network topology,
+  and dependency chains when diagnosing each failure.
+- When a failure involves connectivity/timeout: check network section
+- When a failure involves CRD/API errors: check crds section
+- When a failure involves permission denied: check rbac section
+- When a failure involves missing components: check dependencies section
+
+STEP 2: Check memory for similar past failures BEFORE classifying each failure:
+- Run: python3 ${SCRIPTS}/retrieve_examples.py --error '<key_error_text>' --top-k 3
+- Use the returned examples as reference for your classification decision.
+
+STEP 3: Classify each failure using architecture context + memory + log evidence.
+
+STEP 4: After classification, you MUST do these steps in order:
 1. Write the classification results array to ${REPORT_DIR}/tfa_results.json
 2. Run: python3 ${SCRIPTS}/validate_results.py --results ${REPORT_DIR}/tfa_results.json --fix
 3. Run: python3 ${SCRIPTS}/generate_report.py --results ${REPORT_DIR}/tfa_results.json --output ${REPORT_DIR}/tfa_report.html
 4. Run: python3 ${SCRIPTS}/store_run.py --results ${REPORT_DIR}/tfa_results.json
-5. Print each step of your analysis as you go so progress is visible in the live log.
-
-BEFORE classifying each failure, check memory for similar past failures:
-- Run: python3 ${SCRIPTS}/retrieve_examples.py --error '<key_error_text>' --top-k 3
-- Use the returned examples as reference for your classification decision."
+5. Print each step of your analysis as you go so progress is visible in the live log."
 
 log "Starting Claude analysis..."
 

@@ -124,7 +124,11 @@ def sync_architecture_context() -> None:
 
 
 def resolve_version(version: str) -> Path:
-    """Resolve a version string to the architecture directory path."""
+    """Resolve a version string to the architecture directory path.
+
+    Handles RP version formats like "2.25.7", "3.5.0-ea.2", "3.4" by
+    progressively stripping patch/build suffixes until a match is found.
+    """
     if not version.startswith("rhoai-"):
         version = f"rhoai-{version}"
     ver_dir = ARCH_DIR / version
@@ -132,9 +136,47 @@ def resolve_version(version: str) -> Path:
         return ver_dir
     if ver_dir.is_symlink():
         return ver_dir.resolve()
+
+    # Strip the "rhoai-" prefix for fuzzy matching, then re-add
+    raw = version.removeprefix("rhoai-")
+    candidates_to_try = [raw]
+
+    # "3.5.0-ea.2" → try "3.5-ea.2", "3.5-ea.1", "3.5-ea", "3.5"
+    # "2.25.7" → try "2.25"
+    if re.match(r"\d+\.\d+\.\d+", raw):
+        # Strip patch: "2.25.7" → "2.25", "3.5.0-ea.2" → "3.5-ea.2"
+        stripped = re.sub(r"^(\d+\.\d+)\.\d+", r"\1", raw)
+        candidates_to_try.append(stripped)
+
+    # For EA versions: "3.5-ea.2" → "3.5-ea.1", "3.5-ea"
+    for c in list(candidates_to_try):
+        ea_match = re.match(r"(.+-ea)\.\d+$", c)
+        if ea_match:
+            base_ea = ea_match.group(1)
+            candidates_to_try.append(base_ea)
+
+    # Try each candidate, also try decrementing EA number
+    for c in candidates_to_try:
+        cdir = ARCH_DIR / f"rhoai-{c}"
+        if cdir.exists():
+            return cdir
+
+    # Try finding the closest matching version directory
+    available = sorted(
+        (p for p in ARCH_DIR.iterdir() if p.is_dir() and p.name.startswith("rhoai-")),
+        key=lambda p: p.name,
+    )
+    major_minor = re.match(r"(\d+\.\d+)", raw)
+    if major_minor:
+        prefix = f"rhoai-{major_minor.group(1)}"
+        matches = [p for p in available if p.name.startswith(prefix)]
+        if matches:
+            return matches[-1]
+
     for symlink in ["current-ga", "latest-released", "newest"]:
         candidate = ARCH_DIR / symlink
         if candidate.exists():
+            print(f"Version '{version}' not found, using {symlink}", file=sys.stderr)
             return candidate
     print(f"Version directory not found: {ver_dir}", file=sys.stderr)
     print(f"Available: {sorted(p.name for p in ARCH_DIR.iterdir())}", file=sys.stderr)
