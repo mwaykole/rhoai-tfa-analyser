@@ -46,6 +46,27 @@ else
 fi
 log "Architecture context ready."
 
+# Login to the OpenShift cluster if credentials are available
+CLUSTER_API_URL="${CLUSTER_API_URL:-}"
+CLUSTER_ADMIN_PASSWORD="${CLUSTER_ADMIN_PASSWORD:-}"
+CLUSTER_ADMIN_USER="${CLUSTER_ADMIN_USER:-htpasswd-cluster-admin-user}"
+CLUSTER_LOGGED_IN="false"
+
+if [[ -n "$CLUSTER_API_URL" ]] && [[ -n "$CLUSTER_ADMIN_PASSWORD" ]]; then
+    log "Logging into cluster: ${CLUSTER_API_URL}"
+    if oc login -u "$CLUSTER_ADMIN_USER" -p "$CLUSTER_ADMIN_PASSWORD" \
+       "$CLUSTER_API_URL" --insecure-skip-tls-verify=true 2>&1 | tee -a "$LOG_FILE"; then
+        CLUSTER_LOGGED_IN="true"
+        log "Cluster login successful ($(oc whoami 2>/dev/null || echo 'unknown user'))"
+    else
+        log "Warning: Cluster login failed — analysis will proceed without live cluster access"
+    fi
+elif [[ -n "$CLUSTER_API_URL" ]]; then
+    log "CLUSTER_API_URL set but CLUSTER_ADMIN_PASSWORD missing — skipping cluster login"
+else
+    log "No CLUSTER_API_URL — analysis will proceed without live cluster access"
+fi
+
 # Determine the prompt: first arg, or TFA_PROMPT env var
 PROMPT="${1:-${TFA_PROMPT:-}}"
 if [[ -z "$PROMPT" ]]; then
@@ -92,13 +113,33 @@ The RHOAI version for this analysis is: ${ARCH_VERSION}
 - When a failure involves permission denied: check rbac section
 - When a failure involves missing components: check dependencies section
 
-STEP 2: Check memory for similar past failures BEFORE classifying each failure:
+STEP 2: Inspect the live cluster for additional evidence (if logged in).
+Cluster login status: ${CLUSTER_LOGGED_IN}
+$(if [[ "$CLUSTER_LOGGED_IN" == "true" ]]; then cat << 'CLUSTER_INSTRUCTIONS'
+You have live cluster access. Use read-only oc commands to gather evidence:
+- oc get inferenceservices -A — check ISVC status across namespaces
+- oc get pods -n <ns> — check pod status in test namespaces
+- oc describe pod <pod> -n <ns> — check events, container statuses, restart counts
+- oc logs <pod> -n <ns> -c <container> --tail=100 — get recent container logs
+- oc get events -n <ns> --sort-by=.lastTimestamp — recent events
+- oc get nodes -o wide — check node status and resources
+- oc adm top nodes — check resource usage
+- oc get csv -A | grep -i serving — check operator versions installed
+- oc get crd | grep -i kserve — verify CRDs exist
+IMPORTANT: Only use READ-ONLY commands (get, describe, logs, adm top).
+NEVER use: delete, apply, create, patch, edit, scale, or any write operation.
+Use cluster evidence to validate your classification — e.g. if a test failed
+because ISVC wasn't ready, check if the ISVC still exists and its actual status.
+CLUSTER_INSTRUCTIONS
+else echo "No cluster access available. Classify based on Jenkins logs and architecture context only."; fi)
+
+STEP 3: Check memory for similar past failures BEFORE classifying each failure:
 - Run: python3 ${SCRIPTS}/retrieve_examples.py --error '<key_error_text>' --top-k 3
 - Use the returned examples as reference for your classification decision.
 
-STEP 3: Classify each failure using architecture context + memory + log evidence.
+STEP 4: Classify each failure using architecture context + cluster evidence + memory + log evidence.
 
-STEP 4: After classification, you MUST do these steps in order:
+STEP 5: After classification, you MUST do these steps in order:
 1. Write the classification results array to ${REPORT_DIR}/tfa_results.json
 2. Run: python3 ${SCRIPTS}/validate_results.py --results ${REPORT_DIR}/tfa_results.json --fix
 3. Run: python3 ${SCRIPTS}/generate_report.py --results ${REPORT_DIR}/tfa_results.json --output ${REPORT_DIR}/tfa_report.html

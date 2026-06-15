@@ -2,6 +2,11 @@ FROM quay.io/aipcc-cicd/claudio:v0.6.1
 
 USER root
 
+# Install oc CLI for live cluster inspection during analysis
+RUN curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz \
+    | tar xz -C /usr/local/bin oc kubectl && \
+    chmod +x /usr/local/bin/oc /usr/local/bin/kubectl
+
 # Install Python dependencies for TFA scripts
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
