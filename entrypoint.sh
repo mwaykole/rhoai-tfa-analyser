@@ -128,8 +128,8 @@ if [[ -n "$TEST_DIR" ]] && [[ -d "${TEST_DIR}/.git" ]] && [[ -n "$RHOAI_VERSION"
     TEST_VERSION_BRANCH=$(echo "$RHOAI_VERSION" | grep -oP '^\d+\.\d+')
     if [[ -n "$TEST_VERSION_BRANCH" ]] && [[ "$TEST_VERSION_BRANCH" != "$TEST_REPO_BRANCH" ]]; then
         log "Checking out test repo branch ${TEST_VERSION_BRANCH} for RHOAI ${RHOAI_VERSION}..."
-        if git -C "$TEST_DIR" fetch origin "$TEST_VERSION_BRANCH" 2>/dev/null && \
-           git -C "$TEST_DIR" checkout -B "$TEST_VERSION_BRANCH" "origin/${TEST_VERSION_BRANCH}" 2>/dev/null; then
+        if git -C "$TEST_DIR" fetch --depth=1 origin "$TEST_VERSION_BRANCH" 2>/dev/null && \
+           git -C "$TEST_DIR" checkout -B "$TEST_VERSION_BRANCH" FETCH_HEAD 2>/dev/null; then
             log "Test repo switched to branch ${TEST_VERSION_BRANCH}"
         else
             log "Branch ${TEST_VERSION_BRANCH} not found in test repo — staying on ${TEST_REPO_BRANCH}"

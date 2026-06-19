@@ -215,7 +215,7 @@ def store_run(results: list[dict], launch_id: str = "", source: str = "") -> dic
 
     return {
         "run": run_summary,
-        "learnings_stored": learning_actions.count(lambda a: a.startswith("stored:")),
+        "learnings_stored": sum(1 for a in learning_actions if a.startswith("stored:")),
         "learnings_incremented": sum(1 for a in learning_actions if a.startswith("incremented:")),
         "learnings_new": sum(1 for a in learning_actions if a.startswith("stored:")),
         "actions": learning_actions,
