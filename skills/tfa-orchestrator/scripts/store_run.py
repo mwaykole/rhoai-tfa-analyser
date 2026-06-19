@@ -128,7 +128,7 @@ def load_learnings(path: Path) -> dict:
 
 def error_signature(entry: dict) -> str:
     """Extract a stable error signature for dedup/matching."""
-    key_error = entry.get("key_error", "")
+    key_error = entry.get("error_message", entry.get("key_error", ""))
     root_cause = entry.get("root_cause", "")
     if key_error:
         sig = key_error[:200].strip()
@@ -167,9 +167,9 @@ def increment_or_store(component_path: str, entry: dict) -> str:
         "severity": entry.get("severity", "medium"),
         "confidence": entry.get("confidence", 0),
         "test_name": entry.get("test_name", entry.get("name", "")),
-        "key_error": entry.get("key_error", ""),
+        "key_error": entry.get("error_message", entry.get("key_error", "")),
         "root_cause": entry.get("root_cause", ""),
-        "recommendation": entry.get("recommendation", ""),
+        "recommendation": entry.get("fix_suggestion", entry.get("recommendation", "")),
         "source": "auto_discovered",
     }
 

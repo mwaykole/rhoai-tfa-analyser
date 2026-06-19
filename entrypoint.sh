@@ -29,6 +29,10 @@ ARCH_REPO="${ARCH_CONTEXT_REPO:-https://github.com/mwaykole/architecture-context
 ARCH_BRANCH="${ARCH_CONTEXT_BRANCH:-main}"
 ARCH_DIR="${PLUGIN_DIR}/architecture-context"
 
+TEST_REPO="${TEST_REPO:-https://github.com/opendatahub-io/opendatahub-tests.git}"
+TEST_REPO_BRANCH="${TEST_REPO_BRANCH:-main}"
+TEST_DIR="${PLUGIN_DIR}/opendatahub-tests"
+
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $*" | tee -a "$LOG_FILE"; }
 
 : > "$LOG_FILE"
@@ -45,6 +49,32 @@ else
     git clone --depth=1 --branch "$ARCH_BRANCH" "$ARCH_REPO" "$ARCH_DIR"
 fi
 log "Architecture context ready."
+
+if [[ -d "${TEST_DIR}/.git" ]]; then
+    log "Pulling latest opendatahub-tests..."
+    git -C "$TEST_DIR" fetch origin "$TEST_REPO_BRANCH" 2>/dev/null && \
+        git -C "$TEST_DIR" reset --hard "origin/${TEST_REPO_BRANCH}" || true
+else
+    log "Cloning opendatahub-tests (branch: ${TEST_REPO_BRANCH})..."
+    git clone --depth=1 --branch "$TEST_REPO_BRANCH" "$TEST_REPO" "$TEST_DIR" || {
+        log "Warning: Failed to clone test repo — analysis will proceed without test source code"
+        TEST_DIR=""
+    }
+fi
+if [[ -n "$TEST_DIR" ]]; then
+    log "Test source code ready at ${TEST_DIR}"
+fi
+
+MEMORY_EXPORT_DIR="${TFA_MEMORY_EXPORT_DIR:-}"
+if [[ -n "$MEMORY_EXPORT_DIR" ]] && [[ -d "$MEMORY_EXPORT_DIR/components" ]]; then
+    log "Importing persistent memory from ${MEMORY_EXPORT_DIR}..."
+    cp -r "$MEMORY_EXPORT_DIR/"* "${PLUGIN_DIR}/memory/" 2>/dev/null || true
+    log "Memory imported — $(find "${PLUGIN_DIR}/memory" -name 'learnings.json' -exec python3 -c "
+import json, sys
+total = sum(len(json.load(open(f)).get('learnings',[])) for f in sys.argv[1:])
+print(f'{total} learnings loaded')
+" {} + 2>/dev/null || echo 'count unavailable')"
+fi
 
 # Login to the OpenShift cluster if credentials are available
 CLUSTER_API_URL="${CLUSTER_API_URL:-}"
@@ -93,6 +123,20 @@ fi
 ARCH_VERSION="${RHOAI_VERSION:-newest}"
 log "Architecture version resolved: ${ARCH_VERSION}"
 
+# Switch test repo to version-specific branch if available (e.g. "2.25" branch for RHOAI 2.25.x)
+if [[ -n "$TEST_DIR" ]] && [[ -d "${TEST_DIR}/.git" ]] && [[ -n "$RHOAI_VERSION" ]]; then
+    TEST_VERSION_BRANCH=$(echo "$RHOAI_VERSION" | grep -oP '^\d+\.\d+')
+    if [[ -n "$TEST_VERSION_BRANCH" ]] && [[ "$TEST_VERSION_BRANCH" != "$TEST_REPO_BRANCH" ]]; then
+        log "Checking out test repo branch ${TEST_VERSION_BRANCH} for RHOAI ${RHOAI_VERSION}..."
+        if git -C "$TEST_DIR" fetch origin "$TEST_VERSION_BRANCH" 2>/dev/null && \
+           git -C "$TEST_DIR" checkout -B "$TEST_VERSION_BRANCH" "origin/${TEST_VERSION_BRANCH}" 2>/dev/null; then
+            log "Test repo switched to branch ${TEST_VERSION_BRANCH}"
+        else
+            log "Branch ${TEST_VERSION_BRANCH} not found in test repo — staying on ${TEST_REPO_BRANCH}"
+        fi
+    fi
+fi
+
 # Append instructions for classification, validation, report, and memory storage
 FULL_PROMPT="${PROMPT}
 
@@ -137,10 +181,29 @@ STEP 3: Check memory for similar past failures BEFORE classifying each failure:
 - Run: python3 ${SCRIPTS}/retrieve_examples.py --error '<key_error_text>' --top-k 3
 - Use the returned examples as reference for your classification decision.
 
-STEP 4: Classify each failure using architecture context + cluster evidence + memory + log evidence.
+STEP 4: Read the ACTUAL TEST SOURCE CODE before classifying each failure.
+Test source code is available at: ${TEST_DIR:-not available}
+For each failed test, find and read the test file to understand what the test does:
+- The test path from the error trace maps to a file, e.g. tests/model_serving/model_server/kserve/test_foo.py
+  maps to ${TEST_DIR:-}/tests/model_serving/model_server/kserve/test_foo.py
+- Read the failing test function and any utility functions it calls
+- Check: Is the test assertion correct? Is the test expecting the right behavior?
+- Check: Is the test using an outdated API, wrong parameters, or hardcoded values?
+- Check: Does the test have proper waits/timeouts, or is it timing out prematurely?
+- If the TEST CODE itself is wrong (bad assertion, outdated API call, wrong expectation),
+  classify as automation_bug even if the error looks like a product issue
+- Only classify as product_bug if the test code is correct and the product is genuinely broken
+This step is CRITICAL to avoid misclassifying automation bugs as product bugs.
 
-STEP 5: After classification, you MUST do these steps in order:
+STEP 5: Classify each failure using architecture context + cluster evidence + memory + test source code + log evidence.
+
+STEP 6: After classification, you MUST do these steps in order:
 1. Write the classification results array to ${REPORT_DIR}/tfa_results.json
+   Each entry MUST include these fields:
+   - test_name, classification, severity, confidence, root_cause,
+     error_message, fix_suggestion, component
+   - test_file: the path of the test source file you reviewed (e.g. tests/model_serving/model_server/kserve/test_foo.py)
+     If you could not find/read the test file, set test_file to empty string.
 2. Run: python3 ${SCRIPTS}/validate_results.py --results ${REPORT_DIR}/tfa_results.json --fix
 3. Run: python3 ${SCRIPTS}/generate_report.py --results ${REPORT_DIR}/tfa_results.json --output ${REPORT_DIR}/tfa_report.html
 4. Run: python3 ${SCRIPTS}/store_run.py --results ${REPORT_DIR}/tfa_results.json
@@ -193,6 +256,14 @@ if [[ -f "${REPORT_DIR}/tfa_results.json" ]]; then
 
     log "Storing run in memory..."
     python3 "${SCRIPTS}/store_run.py" --results "${REPORT_DIR}/tfa_results.json" 2>&1 | tee -a "$LOG_FILE" || true
+
+    MEMORY_EXPORT_DIR="${TFA_MEMORY_EXPORT_DIR:-}"
+    if [[ -n "$MEMORY_EXPORT_DIR" ]]; then
+        log "Exporting updated memory to ${MEMORY_EXPORT_DIR}..."
+        mkdir -p "$MEMORY_EXPORT_DIR"
+        cp -r "${PLUGIN_DIR}/memory/"* "$MEMORY_EXPORT_DIR/" 2>/dev/null || true
+        log "Memory exported."
+    fi
 
     log "HTML report: ${REPORT_DIR}/tfa_report.html"
 else

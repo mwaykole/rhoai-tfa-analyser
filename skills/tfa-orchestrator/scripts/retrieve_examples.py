@@ -100,6 +100,7 @@ def retrieve_similar(
 
         entry_text = " ".join([
             entry.get("key_error", ""),
+            entry.get("error_message", ""),
             entry.get("root_cause", ""),
             entry.get("test_name", ""),
         ])

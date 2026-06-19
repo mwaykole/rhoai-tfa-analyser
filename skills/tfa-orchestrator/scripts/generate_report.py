@@ -167,16 +167,19 @@ def render_html(results: list[dict], launch_id: str = "", launch_name: str = "")
                 conf_pct = f"{conf:.0%}" if conf <= 1 else f"{conf}%"
             else:
                 conf_pct = str(conf)
-            key_error = r.get("key_error", "")
-            recommendation = r.get("recommendation", "")
+            key_error = r.get("error_message", r.get("key_error", ""))
+            recommendation = r.get("fix_suggestion", r.get("recommendation", ""))
             notes = r.get("notes", "")
             root_cause = r.get("root_cause", "No root cause determined")
+            test_file = r.get("test_file", "")
 
             detail_rows = ""
             if key_error:
-                detail_rows += f'<div class="detail"><strong>Key Error:</strong> <code>{esc(key_error)}</code></div>'
+                detail_rows += f'<div class="detail"><strong>Error:</strong> <code>{esc(key_error)}</code></div>'
             if recommendation:
-                detail_rows += f'<div class="detail"><strong>Recommendation:</strong> {esc(recommendation)}</div>'
+                detail_rows += f'<div class="detail"><strong>Fix:</strong> {esc(recommendation)}</div>'
+            if test_file:
+                detail_rows += f'<div class="detail"><strong>Test file reviewed:</strong> <code>{esc(test_file)}</code></div>'
             if notes:
                 detail_rows += f'<div class="detail"><strong>Notes:</strong> {esc(notes)}</div>'
 

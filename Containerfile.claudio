@@ -2,6 +2,9 @@ FROM quay.io/aipcc-cicd/claudio:v0.6.1
 
 USER root
 
+# Ensure git is available (needed to clone test repo and architecture-context)
+RUN which git || (dnf install -y git && dnf clean all) || true
+
 # Install oc CLI for live cluster inspection during analysis
 RUN curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz \
     | tar xz -C /usr/local/bin oc kubectl && \
