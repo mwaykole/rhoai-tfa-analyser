@@ -31,6 +31,36 @@
       "root_cause": "The 'ovms_serverless_inference_service_scope_session' fixture creates an InferenceService 'onnx-serverless' in Serverless/KServe mode but no pods are scheduled within the 30-second pod-creation timeout. ResourceNotFoundError: onnx-serverless has no pods. This indicates the KServe controller or Knative Serving is not processing the ISVC creation \u2014 possible causes: Knative controller not running, Istio sidecar injection issue, missing cluster role bindings, or resource quota limits in the 'upgrade-model-server' namespace.",
       "recommendation": "1) Check Knative Serving controller and activator pod status in the knative-serving namespace. 2) Verify Istio is correctly configured for the upgrade-model-server namespace (sidecar injection, PeerAuthentication). 3) Check resource quotas and LimitRanges in the namespace. 4) Review kserve-controller-manager logs for ISVC reconciliation errors. 5) Ensure the ServingRuntime 'onnx-serverless' template resolves correctly to the expected container image.",
       "source": "auto_discovered"
+    },
+    {
+      "id": "learn-0edf05ca",
+      "timestamp": "2026-06-19T15:21:33.555207+00:00",
+      "last_seen": "2026-06-19T15:21:33.555210+00:00",
+      "type": "new_pattern",
+      "hit_count": 1,
+      "classification": "product_bug",
+      "severity": "high",
+      "confidence": 0.92,
+      "test_name": "test_kserve_gpu_inference",
+      "key_error": "RuntimeError: No CUDA GPUs are available",
+      "root_cause": "KServe pod failed to start due to missing GPU resources on the node",
+      "recommendation": "Ensure GPU nodes are available and NVIDIA device plugin is running",
+      "source": "auto_discovered"
+    },
+    {
+      "id": "learn-d368b6d0",
+      "timestamp": "2026-06-19T15:21:33.555456+00:00",
+      "last_seen": "2026-06-19T15:21:33.555459+00:00",
+      "type": "new_pattern",
+      "hit_count": 1,
+      "classification": "automation_bug",
+      "severity": "medium",
+      "confidence": 0.88,
+      "test_name": "test_isvc_ready_check",
+      "key_error": "TypeError: Resource.update() missing 1 required positional argument: 'resource_dict'",
+      "root_cause": "Test calls resource.update() with no arguments but the API now requires resource_dict",
+      "recommendation": "Update test to pass resource_dict to resource.update()",
+      "source": "auto_discovered"
     }
   ]
 }

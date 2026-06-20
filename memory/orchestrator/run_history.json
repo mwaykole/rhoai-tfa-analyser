@@ -17,6 +17,21 @@
         "critical": 2,
         "medium": 1
       }
+    },
+    {
+      "id": "run-ef3b833f",
+      "timestamp": "2026-06-19T15:21:33.555091+00:00",
+      "launch_id": "",
+      "source": "log_file",
+      "total_failures": 2,
+      "by_classification": {
+        "product_bug": 1,
+        "automation_bug": 1
+      },
+      "by_severity": {
+        "high": 1,
+        "medium": 1
+      }
     }
   ]
 }

@@ -197,6 +197,37 @@ This step is CRITICAL to avoid misclassifying automation bugs as product bugs.
 
 STEP 5: Classify each failure using architecture context + cluster evidence + memory + test source code + log evidence.
 
+CRITICAL CLASSIFICATION RULES — read carefully:
+
+A. infrastructure_issue (NOT product_bug) when:
+   - A webhook/admission controller rejects a request because a REQUIRED RESOURCE IS MISSING
+     from the cluster (e.g. "ConfigMap not found", "CRD not installed", "namespace not found",
+     "resource not found in namespace"). The webhook is working correctly — the cluster is
+     misconfigured or missing prerequisites.
+   - A service/endpoint returns 404 because the service is NOT DEPLOYED (e.g. MaaS token
+     minting service not deployed, KEDA operator not installed).
+   - GPU nodes are not available and a workload requiring GPU cannot be scheduled.
+   - A template, CRD, or operator is not installed in the cluster.
+   - The test times out because a prerequisite component is missing or not configured.
+   Pattern: if the error says "X not found in namespace Y" or "CRD not installed" or
+   "service not deployed", that is infrastructure_issue — the cluster setup is incomplete.
+
+B. product_bug ONLY when:
+   - The product code itself has a logic error, regression, or unexpected behavior.
+   - All required cluster prerequisites ARE present but the product still fails.
+   - The webhook/controller has a code bug (not just validating correctly against missing config).
+   - A reconciliation loop, API, or controller produces wrong results despite correct setup.
+
+C. automation_bug when:
+   - The TEST CODE is wrong: bad assertion, outdated API call, wrong parameters, hardcoded
+     values that no longer match the product, missing waits/timeouts.
+   - The test fixture is constructing an invalid resource spec that the product correctly rejects.
+   - The test infrastructure (Jira integration, CI tokens) fails, not the product under test.
+
+D. Cascade failures: when a class-scoped fixture fails and multiple tests in that class fail
+   with the same error, give them ALL the same classification as the primary failure.
+   Do NOT mix classifications (e.g. primary=infrastructure_issue but cascades=product_bug).
+
 STEP 6: After classification, you MUST do these steps in order:
 1. Write the classification results array to ${REPORT_DIR}/tfa_results.json
    Each entry MUST include these fields:
@@ -241,8 +272,17 @@ cat > ~/.claude.json << EOF
 }
 EOF
 
-claude -p --dangerously-skip-permissions --bare --plugin-dir "$PLUGIN_DIR" "$FULL_PROMPT" 2>&1 | tee -a "$LOG_FILE"
-EXIT_CODE=${PIPESTATUS[0]}
+USE_HEADROOM="${USE_HEADROOM:-true}"
+if [[ "$USE_HEADROOM" == "true" ]] && command -v headroom &>/dev/null; then
+    log "Using headroom for context compression (token savings: 60-95%)"
+    headroom wrap claude -- -p --dangerously-skip-permissions --bare --plugin-dir "$PLUGIN_DIR" "$FULL_PROMPT" 2>&1 | tee -a "$LOG_FILE"
+    EXIT_CODE=${PIPESTATUS[0]}
+    headroom perf 2>&1 | tee -a "$LOG_FILE" || true
+else
+    log "Running Claude without headroom compression"
+    claude -p --dangerously-skip-permissions --bare --plugin-dir "$PLUGIN_DIR" "$FULL_PROMPT" 2>&1 | tee -a "$LOG_FILE"
+    EXIT_CODE=${PIPESTATUS[0]}
+fi
 
 log "Claude analysis completed (exit code: $EXIT_CODE)"
 

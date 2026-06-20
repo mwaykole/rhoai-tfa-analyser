@@ -10,6 +10,9 @@ RUN curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/op
     | tar xz -C /usr/local/bin oc kubectl && \
     chmod +x /usr/local/bin/oc /usr/local/bin/kubectl
 
+# Install headroom for context compression (60-95% token savings)
+RUN pip install --no-cache-dir "headroom-ai[proxy,code]"
+
 # Install Python dependencies for TFA scripts
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt

@@ -10,6 +10,10 @@
 - Bundle Jenkins/ReportPortal MCP servers in the container image under `mcps/`; use ReportPortal MCP for all RP operations (no custom HTTP clients).
 - Sub-skills invoked by a parent debugger should reuse failure data already gathered; do not re-fetch from RP.
 - Run analysis and integration tests via podman (`tfa-claudio` image); scheduled production automation runs on GitLab CI runners, not the user's laptop.
+- RP comments should use plain English ("The test failed because…"), not markdown-formatted technical blocks.
+- Slack notifications and RP defect-type updates must cover ALL failure classification types, not just product bugs.
+- TFA must read actual test source code (from `opendatahub-tests` repo) before classifying to avoid misclassifying automation bugs as product bugs.
+- Use `cursor-ide-browser` MCP server for browser automation inside Cursor IDE; do not use `plugin-browse-browser` (external browser).
 - Do not push to GitHub or GitLab remotes unless explicitly instructed; local commits only by default.
 
 ## Learned Workspace Facts
@@ -25,4 +29,6 @@
 - Entrypoint post-analysis pipeline: `validate_results.py` → `generate_report.py` → `store_run.py`; `retrieve_examples.py` injects similar past failures from memory before classification.
 - `RP_TOKEN` bearer token is the preferred ReportPortal auth over username/password.
 - Jenkins URLs: orchestrator prefers `mcp__rhoai-jenkins__get_build_log`, falls back to `tools/jenkins-client/jenkins_client.py` (`JENKINS_URL`/`JENKINS_USER`/`JENKINS_TOKEN`).
-- Companion GitLab repo `tfa_automation_gitlab` (`gitlab.cee.redhat.com/mwaykole/rhoai-tfa-analysis`) checks RP every 30 min for model_server failures, deduplicates via `analyzed_launches.json`, gates with `check_rp.py` → `monitor_rp.py` (`NEW_LAUNCHES` dotenv; no cross-pipeline API triggers), posts defect-type details back to RP, sends Slack alerts for `product_bug`/`automation_bug` via `SLACK_WEBHOOK_URL` CI variable, and publishes `report/RHOAI-{version}/{cluster}_{cloud}/` with `tfa_report.html`, `details.md`, and `summary.md`.
+- `opendatahub-io/opendatahub-tests` is the test source repo; entrypoint clones it and checks out version-specific branch (e.g. `2.25` for RHOAI 2.25.x) so TFA reads test code before classifying failures (STEP 4 in prompt).
+- Shallow `git clone --depth=1` doesn't create `origin/<branch>` tracking refs after fetch; use `FETCH_HEAD` for branch checkout.
+- Companion GitLab repo `tfa_automation_gitlab` (`gitlab.cee.redhat.com/mwaykole/rhoai-tfa-analysis`) runs a 3-stage pipeline: check (RP query) → analyze (TFA + RP/Slack updates) → autofix (automation bug fixes); `autofix_runner.py` clones `mwaykole/opendatahub-tests` fork, uses Claude to fix test code, re-runs on original cluster, and creates PR if test passes; `monitor_rp.py` exports `automation_bugs.json` + `autofix_needed.env` for the autofix stage; `GITHUB_TOKEN` CI variable enables pushing fix branches.
