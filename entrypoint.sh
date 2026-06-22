@@ -113,19 +113,17 @@ ARCH_LOOKUP="${PLUGIN_DIR}/skills/architecture-reference/scripts/arch_lookup.py"
 # Resolve architecture version: env var > extract from prompt > fallback to newest
 RHOAI_VERSION="${RHOAI_VERSION:-}"
 if [[ -z "$RHOAI_VERSION" ]]; then
-    # Try extracting version from the prompt (e.g. "RHOAI version 2.25" or "3.5-ea.1")
-    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '(?i)(?:rhoai|version)\s+(\d+\.\d+(?:[.-]\S+)?)' | grep -oP '\d+\.\d+(?:[.-]\S+)?' | head -1)
+    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '(?i)(?:rhoai|version)\s+(\d+\.\d+(?:[.-]\S+)?)' | grep -oP '\d+\.\d+(?:[.-]\S+)?' | head -1 || true)
 fi
 if [[ -z "$RHOAI_VERSION" ]]; then
-    # Try extracting from Jenkins URL path (e.g. /job/2.25/ or /job/3.5-ea.1/)
-    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '/job/(\d+\.\d+(?:[.-][a-z0-9.]+)?)/' | grep -oP '\d+\.\d+(?:[.-][a-z0-9.]+)?' | head -1)
+    RHOAI_VERSION=$(echo "$PROMPT" | grep -oP '/job/(\d+\.\d+(?:[.-][a-z0-9.]+)?)/' | grep -oP '\d+\.\d+(?:[.-][a-z0-9.]+)?' | head -1 || true)
 fi
 ARCH_VERSION="${RHOAI_VERSION:-newest}"
 log "Architecture version resolved: ${ARCH_VERSION}"
 
 # Switch test repo to version-specific branch if available (e.g. "2.25" branch for RHOAI 2.25.x)
 if [[ -n "$TEST_DIR" ]] && [[ -d "${TEST_DIR}/.git" ]] && [[ -n "$RHOAI_VERSION" ]]; then
-    TEST_VERSION_BRANCH=$(echo "$RHOAI_VERSION" | grep -oP '^\d+\.\d+')
+    TEST_VERSION_BRANCH=$(echo "$RHOAI_VERSION" | grep -oP '^\d+\.\d+' || true)
     if [[ -n "$TEST_VERSION_BRANCH" ]] && [[ "$TEST_VERSION_BRANCH" != "$TEST_REPO_BRANCH" ]]; then
         log "Checking out test repo branch ${TEST_VERSION_BRANCH} for RHOAI ${RHOAI_VERSION}..."
         if git -C "$TEST_DIR" fetch --depth=1 origin "$TEST_VERSION_BRANCH" 2>/dev/null && \
