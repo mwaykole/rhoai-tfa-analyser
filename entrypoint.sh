@@ -199,16 +199,16 @@ CRITICAL CLASSIFICATION RULES — read carefully:
 
 A. infrastructure_issue (NOT product_bug) when:
    - A webhook/admission controller rejects a request because a REQUIRED RESOURCE IS MISSING
-     from the cluster (e.g. "ConfigMap not found", "CRD not installed", "namespace not found",
-     "resource not found in namespace"). The webhook is working correctly — the cluster is
+     from the cluster (e.g. 'ConfigMap not found', 'CRD not installed', 'namespace not found',
+     'resource not found in namespace'). The webhook is working correctly — the cluster is
      misconfigured or missing prerequisites.
    - A service/endpoint returns 404 because the service is NOT DEPLOYED (e.g. MaaS token
      minting service not deployed, KEDA operator not installed).
    - GPU nodes are not available and a workload requiring GPU cannot be scheduled.
    - A template, CRD, or operator is not installed in the cluster.
    - The test times out because a prerequisite component is missing or not configured.
-   Pattern: if the error says "X not found in namespace Y" or "CRD not installed" or
-   "service not deployed", that is infrastructure_issue — the cluster setup is incomplete.
+   Pattern: if the error says 'X not found in namespace Y' or 'CRD not installed' or
+   'service not deployed', that is infrastructure_issue — the cluster setup is incomplete.
 
 B. product_bug ONLY when:
    - The product code itself has a logic error, regression, or unexpected behavior.
