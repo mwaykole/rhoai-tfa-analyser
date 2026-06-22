@@ -9,9 +9,13 @@ This plugin replaces the standalone TFA CLI with a set of Claude Code skills whe
 - **Free-form prompts** — describe what you want analyzed in natural language
 - **17 skills** — orchestrator + 15 component debuggers + architecture reference
 - **Architecture context** — clones latest RHOAI architecture docs from GitHub on every run
+- **Test source code review** — clones `opendatahub-tests` and reads the actual test code before classifying
+- **Live cluster inspection** — logs into the test cluster via `oc` for pod/event/CRD evidence
 - **Persistent memory** — learnings accumulate across runs for better accuracy over time
 - **Few-shot learning** — retrieves similar past failures from memory to guide classification
+- **Classification rules** — explicit guidance distinguishes infrastructure issues from product bugs and automation bugs
 - **Schema validation** — enforces strict classification output format with auto-fix
+- **Headroom token compression** — optional `headroom wrap` integration reduces Claude token usage by 60-95%
 - **HTML reports** — detailed dark-themed report with severity charts and per-failure cards
 - **Live logging** — stream analysis progress via `/tmp/analysis.log`
 
@@ -272,12 +276,22 @@ podman run --rm \
 | `RP_PROJECT` | ReportPortal project name (e.g., `ods_ci`) |
 | `RP_TOKEN` | ReportPortal API token (bearer auth) |
 
+**Cluster access (optional but recommended for accuracy):**
+
+| Variable | Description |
+|---|---|
+| `CLUSTER_API_URL` | OpenShift API URL (e.g., `https://api.cluster.example.com:6443`) |
+| `CLUSTER_ADMIN_USER` | Cluster admin username (default: `htpasswd-cluster-admin-user`) |
+| `CLUSTER_ADMIN_PASSWORD` | Cluster admin password for `oc login` |
+
 **Optional:**
 
 | Variable | Default | Description |
 |---|---|---|
 | `CLAUDE_CODE_USE_VERTEX` | `1` | Enable Vertex AI backend |
 | `ANTHROPIC_VERTEX_REGION` | `us-east5` | Vertex AI region |
+| `USE_HEADROOM` | `false` | Enable headroom token compression (`true` to wrap Claude with `headroom wrap`) |
+| `RHOAI_VERSION` | auto-detected | RHOAI version for architecture context and test branch checkout |
 | `TFA_PROMPT` | — | Alternative to passing prompt as container argument |
 | `ARCH_CONTEXT_REPO` | `https://github.com/mwaykole/architecture-context.git` | Architecture-context git URL |
 | `ARCH_CONTEXT_BRANCH` | `main` | Architecture-context branch to track |
@@ -303,15 +317,15 @@ Each debugger returns a JSON result per failure:
 
 ```json
 {
-  "test_id": "12345",
   "test_name": "test_deploy_model_vllm",
   "classification": "product_bug",
   "severity": "high",
   "confidence": 0.92,
   "root_cause": "LeaderWorkerSet CRD not installed on cluster",
-  "recommendation": "Install LWS CRD before deploying LLMD",
-  "jira_pattern": "RHOAIENG-*",
-  "rp_defect_type": "pb001"
+  "error_message": "CustomResourceDefinition 'leaderworkersets.leaderworkerset.x-k8s.io' not found",
+  "fix_suggestion": "Install LWS CRD before deploying LLMD",
+  "component": "llmd",
+  "test_file": "tests/model_serving/model_server/llmd/test_llmd_connection.py"
 }
 ```
 
@@ -352,15 +366,23 @@ Periodic: promote_learnings.py → bake high-hit patterns into SKILL.md
 - Patterns with `hit_count >= 5` are promoted into SKILL.md as permanent knowledge
 - Once promoted, they guide Claude without needing retrieval
 
-## Post-Analysis Pipeline
+## Analysis Pipeline
 
-After Claude classifies failures, the entrypoint automatically runs:
+The entrypoint orchestrates a multi-step analysis pipeline:
 
-1. **Validate** — `validate_results.py --fix` normalizes classification names, clamps confidence to 0-1, fills missing RP defect codes
-2. **Report** — `generate_report.py` produces a standalone HTML report with summary charts and per-failure cards
-3. **Store** — `store_run.py` persists run summary and learnings to memory for future few-shot retrieval
-
-This pipeline runs even if Claude doesn't explicitly call these scripts, ensuring consistent output.
+1. **Clone architecture-context** — fetches version-specific RHOAI architecture docs (CRDs, RBAC, ports, dependencies)
+2. **Clone opendatahub-tests** — checks out the version-specific branch for test source code review
+3. **Cluster login** — `oc login` to the test cluster for live pod/event inspection (if credentials provided)
+4. **Claude analysis** — follows a strict 6-step process:
+   - Load architecture context for the RHOAI version
+   - Inspect live cluster (pods, ISVCs, events, logs)
+   - Retrieve similar past failures from memory
+   - Read the actual test source code before classifying
+   - Classify each failure with explicit rules for infrastructure vs. product vs. automation bugs
+   - Write results, validate, generate report, store learnings
+5. **Validate** — `validate_results.py --fix` normalizes classification names, clamps confidence, fills RP defect codes
+6. **Report** — `generate_report.py` produces a standalone HTML report with summary charts and per-failure cards
+7. **Store** — `store_run.py` persists run summary and learnings to memory for future few-shot retrieval
 
 ## Read-Only Cluster Access
 
