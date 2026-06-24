@@ -418,12 +418,78 @@ document.querySelectorAll('.comp-section').forEach(s => observer.observe(s));
 </html>"""
 
 
+def render_operator_section(operator_report: dict) -> str:
+    """Render an HTML section for operator version info."""
+    if not operator_report:
+        return ""
+
+    dsci_ver = operator_report.get("dsci", {}).get("version", "N/A")
+    expected_ver = operator_report.get("expected_product_version", "N/A")
+    mismatches = operator_report.get("mismatches", [])
+    serving_ops = operator_report.get("serving_operators", [])
+
+    ver_match_color = "#16a34a" if dsci_ver == expected_ver else "#dc2626"
+
+    ops_rows = ""
+    for op in serving_ops:
+        phase = op.get("phase", "Unknown")
+        phase_color = "#16a34a" if phase == "Succeeded" else "#dc2626" if phase == "Failed" else "#ca8a04"
+        ops_rows += f"""
+        <tr>
+          <td style="font-size:0.78rem">{esc(op['name'])}</td>
+          <td style="font-size:0.78rem">{esc(op['version'])}</td>
+          <td style="font-size:0.78rem;color:{phase_color}">{esc(phase)}</td>
+          <td style="font-size:0.78rem;color:var(--muted)">{esc(op.get('namespace', ''))}</td>
+        </tr>"""
+
+    mismatch_rows = ""
+    for m in mismatches:
+        sev_color = "#dc2626" if m.get("severity") == "high" else "#ca8a04"
+        mismatch_rows += f"""
+        <div class="detail" style="border-left:3px solid {sev_color};padding-left:0.5rem;margin:0.3rem 0">
+          <strong style="color:{sev_color}">[{esc(m.get('severity','').upper())}]</strong>
+          {esc(m.get('type',''))}: {esc(m.get('detail',''))}
+        </div>"""
+
+    return f"""
+    <details class="comp-section" id="sect-operator-versions" style="border-color:#7c3aed">
+      <summary class="comp-toggle">
+        <div class="comp-toggle-left">
+          <span class="comp-dot-lg" style="background:#7c3aed"></span>
+          <span class="comp-title">Operator Versions</span>
+          <span class="comp-count-badge" style="border-color:{ver_match_color};color:{ver_match_color}">
+            {len(mismatches)} {'mismatch' if len(mismatches) == 1 else 'mismatches'}
+          </span>
+        </div>
+        <div class="comp-toggle-right">
+          <span class="pill" style="background:{ver_match_color}">RHOAI {esc(dsci_ver)}</span>
+          <span class="pill" style="background:#475569">Expected: {esc(expected_ver)}</span>
+        </div>
+      </summary>
+      <div class="comp-body">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:0.75rem">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="text-align:left;font-size:0.72rem;color:var(--muted);padding:0.3rem">Operator</th>
+              <th style="text-align:left;font-size:0.72rem;color:var(--muted);padding:0.3rem">Version</th>
+              <th style="text-align:left;font-size:0.72rem;color:var(--muted);padding:0.3rem">Phase</th>
+              <th style="text-align:left;font-size:0.72rem;color:var(--muted);padding:0.3rem">Namespace</th>
+            </tr>
+          </thead>
+          <tbody>{ops_rows}</tbody>
+        </table>
+        {mismatch_rows if mismatch_rows else '<div class="detail" style="color:#16a34a">All operators healthy, no version mismatches.</div>'}
+      </div>
+    </details>"""
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate TFA HTML report")
     parser.add_argument("--results", required=True, help="Path to results JSON file")
     parser.add_argument("--output", required=True, help="Path to write HTML report")
     parser.add_argument("--launch-id", default="", help="Launch ID for title")
     parser.add_argument("--launch-name", default="", help="Launch name for subtitle")
+    parser.add_argument("--operator-report", default="", help="Path to operator_versions.json")
     args = parser.parse_args()
 
     with open(args.results) as f:
@@ -432,7 +498,21 @@ def main():
     if isinstance(results, dict):
         results = results.get("classified_failures", results.get("failures", [results]))
 
+    operator_report = {}
+    op_report_path = args.operator_report
+    if not op_report_path:
+        candidate = Path(args.results).parent / "operator_versions.json"
+        if candidate.exists():
+            op_report_path = str(candidate)
+    if op_report_path and Path(op_report_path).exists():
+        with open(op_report_path) as f:
+            operator_report = json.load(f)
+
     html = render_html(results, args.launch_id, args.launch_name)
+    if operator_report:
+        op_section = render_operator_section(operator_report)
+        html = html.replace("    <div class=\"footer\">", f"    {op_section}\n\n    <div class=\"footer\">")
+
     Path(args.output).write_text(html)
     print(f"Report written to {args.output}", file=sys.stderr)
     print(args.output)

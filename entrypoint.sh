@@ -103,6 +103,19 @@ else
     log "No CLUSTER_API_URL — analysis will proceed without live cluster access"
 fi
 
+# Extract operator versions from cluster (if logged in)
+OPERATOR_REPORT="${REPORT_DIR}/operator_versions.json"
+if [[ "$CLUSTER_LOGGED_IN" == "true" ]]; then
+    log "Extracting operator versions from cluster..."
+    python3 "${PLUGIN_DIR}/skills/tfa-orchestrator/scripts/extract_operator_versions.py" \
+        --arch-version "${RHOAI_VERSION:-newest}" \
+        --output "$OPERATOR_REPORT" --summary 2>&1 | tee -a "$LOG_FILE" || true
+    if [[ -f "$OPERATOR_REPORT" ]]; then
+        MISMATCH_COUNT=$(python3 -c "import json; print(json.load(open('$OPERATOR_REPORT')).get('mismatch_count', 0))" 2>/dev/null || echo "0")
+        log "Operator version report: ${MISMATCH_COUNT} mismatches found"
+    fi
+fi
+
 # Determine the prompt: first arg, or TFA_PROMPT env var
 PROMPT="${1:-${TFA_PROMPT:-}}"
 if [[ -z "$PROMPT" ]]; then
@@ -195,6 +208,21 @@ Use cluster evidence to validate your classification — e.g. if a test failed
 because ISVC wasn't ready, check if the ISVC still exists and its actual status.
 CLUSTER_INSTRUCTIONS
 else echo "No cluster access available. Classify based on Jenkins logs and architecture context only."; fi)
+
+STEP 2.5: Review operator version report for mismatches.
+$(if [[ -f "$OPERATOR_REPORT" ]]; then cat << OPVER_INSTRUCTIONS
+An operator version report was extracted from the cluster: ${OPERATOR_REPORT}
+Read this file — it contains:
+  - All installed CSVs (ClusterServiceVersions) with their versions and health status
+  - The expected RHOAI product version from architecture-context
+  - Any version mismatches or unhealthy operators
+USE THIS DATA when classifying failures:
+  - If an operator CSV is in 'Failed' or 'Pending' phase → likely infrastructure_issue
+  - If the installed RHOAI version differs from expected → note in root_cause
+  - If a required operator (kserve, serverless, servicemesh) is missing → infrastructure_issue
+  - Add 'operator_versions' context to your root_cause when relevant
+OPVER_INSTRUCTIONS
+else echo "No operator version report available (no cluster access or extraction failed)."; fi)
 
 STEP 3: Check memory for similar past failures BEFORE classifying each failure:
 - Run: python3 ${SCRIPTS}/retrieve_examples.py --error '<key_error_text>' --top-k 3
@@ -339,7 +367,8 @@ if [[ -f "${REPORT_DIR}/tfa_results.json" ]]; then
     if ! [[ -f "${REPORT_DIR}/tfa_report.html" ]]; then
         log "Running post-hoc validation + report generation..."
         python3 "${SCRIPTS}/validate_results.py" --results "${REPORT_DIR}/tfa_results.json" --fix 2>&1 | tee -a "$LOG_FILE" || true
-        python3 "${SCRIPTS}/generate_report.py" --results "${REPORT_DIR}/tfa_results.json" --output "${REPORT_DIR}/tfa_report.html" 2>&1 | tee -a "$LOG_FILE" || true
+        python3 "${SCRIPTS}/generate_report.py" --results "${REPORT_DIR}/tfa_results.json" --output "${REPORT_DIR}/tfa_report.html" \
+            ${OPERATOR_REPORT:+--operator-report "$OPERATOR_REPORT"} 2>&1 | tee -a "$LOG_FILE" || true
     fi
 
     log "Storing run in memory..."
