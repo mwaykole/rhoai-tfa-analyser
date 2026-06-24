@@ -76,6 +76,12 @@ print(f'{total} learnings loaded')
 " {} + 2>/dev/null || echo 'count unavailable')"
 fi
 
+# Set OC_BINARY_PATH for pytest and ensure PYTEST_JIRA_PASSWORD mirrors PYTEST_JIRA_TOKEN
+export OC_BINARY_PATH="${OC_BINARY_PATH:-$(command -v oc 2>/dev/null || echo '/usr/local/bin/oc')}"
+if [[ -n "${PYTEST_JIRA_TOKEN:-}" ]] && [[ -z "${PYTEST_JIRA_PASSWORD:-}" ]]; then
+    export PYTEST_JIRA_PASSWORD="$PYTEST_JIRA_TOKEN"
+fi
+
 # Login to the OpenShift cluster if credentials are available
 CLUSTER_API_URL="${CLUSTER_API_URL:-}"
 CLUSTER_ADMIN_PASSWORD="${CLUSTER_ADMIN_PASSWORD:-}"
