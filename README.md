@@ -23,62 +23,47 @@ This plugin replaces the standalone TFA CLI with a set of Claude Code skills whe
 
 ```mermaid
 flowchart TD
-    trigger[User / CI Trigger] --> orchestrator[tfa-orchestrator]
+    trigger[User / CI Trigger] --> entrypoint[entrypoint.sh]
 
-    orchestrator --> parse[Parse prompt: RP launch / file path / URL / directory]
-    orchestrator --> memory_read[(Retrieve few-shot examples from memory)]
-    orchestrator --> gather[Gather failure data from source]
-    orchestrator --> archsync[Sync architecture-context from GitHub]
+    entrypoint --> clone_arch[Clone architecture-context]
+    entrypoint --> clone_tests[Clone opendatahub-tests<br/>version-specific branch]
+    entrypoint --> import_mem[Import persistent memory]
+    entrypoint --> oc_login[oc login to cluster]
 
-    archsync --> archref[architecture-reference skill]
-    archref -->|CRDs, ports, RBAC, deps, data flows| routing
+    clone_arch --> claude_start[Start Claude Analysis]
+    clone_tests --> claude_start
+    import_mem --> claude_start
+    oc_login --> claude_start
 
-    parse --> gather
-    memory_read -->|Similar past failures| routing
-    gather --> routing{Route to debugger skill}
-
-    subgraph serving["Model Serving"]
-        ms[debugger-model-server]
-        ks[debugger-kserve]
-        llmd[debugger-llmd]
-        mm[debugger-modelmesh]
+    subgraph claude["Claude 8-Step Analysis"]
+        direction TB
+        s0[Step 0: Fetch Jenkins console log<br/>via get_build_log MCP tool]
+        s0 --> s1[Step 1: Load architecture context<br/>CRDs, RBAC, ports, dependencies]
+        s1 --> s2[Step 2: Inspect live cluster<br/>oc get pods, ISVCs, events, logs]
+        s2 --> s3[Step 3: Retrieve similar past failures<br/>from memory layer]
+        s3 --> s4[Step 4: Read test source code<br/>from opendatahub-tests]
+        s4 --> s5[Step 5: Classify each failure<br/>product_bug / infra / automation / flaky]
+        s5 --> s6[Step 6: Re-run failing tests<br/>uv run pytest on cluster]
+        s6 --> s6_check{Re-run result?}
+        s6_check -->|Pass| reclassify[Reclassify as intermittent]
+        s6_check -->|Fail same| confirm[Confirm classification]
+        s6_check -->|Fail different| reinvestigate[Re-investigate]
+        reclassify --> s7[Step 7: Write results + validate<br/>+ generate report + store memory]
+        confirm --> s7
+        reinvestigate --> s7
     end
 
-    routing --> ms
-    routing --> ks
-    routing --> llmd
-    routing --> mm
-    routing --> sr[debugger-serving-runtimes]
-    routing --> ls[debugger-llama-stack]
-    routing --> pipe[debugger-pipelines]
-    routing --> mr[debugger-model-registry]
-    routing --> wb[debugger-workbenches]
-    routing --> dash[debugger-dashboard]
-    routing --> tai[debugger-trustyai]
-    routing --> ops[debugger-rhoai-operators]
-    routing --> dist[debugger-distributed]
-    routing --> ch[debugger-cluster-health]
-    routing --> gen[debugger-generic]
+    claude_start --> s0
 
-    ms --> validate[Validate results schema]
-    ks --> validate
-    llmd --> validate
-    mm --> validate
-    sr --> validate
-    ls --> validate
-    pipe --> validate
-    mr --> validate
-    wb --> validate
-    dash --> validate
-    tai --> validate
-    ops --> validate
-    dist --> validate
-    ch --> validate
-    gen --> validate
+    subgraph output["Output"]
+        results[tfa_results.json]
+        report_html[tfa_report.html]
+        memory_out[(Updated memory)]
+    end
 
-    validate --> report[Generate HTML report]
-    report --> store_run[Store run + learnings in memory]
-    store_run --> memory[(Memory Learnings)]
+    s7 --> results
+    s7 --> report_html
+    s7 --> memory_out
 ```
 
 ## Prompt Examples
@@ -290,14 +275,29 @@ podman run --rm \
 |---|---|---|
 | `CLAUDE_CODE_USE_VERTEX` | `1` | Enable Vertex AI backend |
 | `ANTHROPIC_VERTEX_REGION` | `us-east5` | Vertex AI region |
-| `USE_HEADROOM` | `false` | Enable headroom token compression (`true` to wrap Claude with `headroom wrap`) |
+| `USE_HEADROOM` | `true` | Enable headroom token compression (`true` to wrap Claude with `headroom wrap`) |
 | `RHOAI_VERSION` | auto-detected | RHOAI version for architecture context and test branch checkout |
 | `TFA_PROMPT` | — | Alternative to passing prompt as container argument |
 | `ARCH_CONTEXT_REPO` | `https://github.com/mwaykole/architecture-context.git` | Architecture-context git URL |
 | `ARCH_CONTEXT_BRANCH` | `main` | Architecture-context branch to track |
-| `JENKINS_URL` | — | Jenkins server URL (enables Jenkins log fetching) |
+| `JENKINS_URL` | — | Jenkins server URL (enables Jenkins log fetching via MCP) |
+| `JENKINS_USER` | — | Jenkins username for API authentication |
+| `JENKINS_TOKEN` | — | Jenkins API token |
 | `TFA_LOG_FILE` | `/tmp/analysis.log` | Path for live analysis log |
 | `TFA_REPORT_DIR` | `/tmp` | Directory for HTML report and results JSON |
+| `TFA_MEMORY_EXPORT_DIR` | — | Directory to export/import persistent memory across runs |
+
+**Required for test re-runs (opendatahub-tests pytest):**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CI_S3_BUCKET_NAME` | `ods-ci-s3` | S3 bucket for CI test data |
+| `CI_S3_BUCKET_ENDPOINT` | `https://s3.us-east-1.amazonaws.com/` | S3 endpoint |
+| `MODELS_S3_BUCKET_NAME` | `ods-ci-wisdom` | S3 bucket for model artifacts |
+| `AWS_ACCESS_KEY_ID` | — | AWS access key for S3 |
+| `AWS_SECRET_ACCESS_KEY` | — | AWS secret key for S3 |
+| `PYTEST_JIRA_TOKEN` | — | Jira API token for pytest-jira integration |
+| `OC_BINARY_PATH` | auto-detected | Path to `oc` binary (set automatically in container) |
 
 ## Architecture Context
 
@@ -325,9 +325,22 @@ Each debugger returns a JSON result per failure:
   "error_message": "CustomResourceDefinition 'leaderworkersets.leaderworkerset.x-k8s.io' not found",
   "fix_suggestion": "Install LWS CRD before deploying LLMD",
   "component": "llmd",
-  "test_file": "tests/model_serving/model_server/llmd/test_llmd_connection.py"
+  "test_file": "tests/model_serving/model_server/llmd/test_llmd_connection.py",
+  "rerun_result": "fail_same",
+  "rerun_error": "CustomResourceDefinition 'leaderworkersets.leaderworkerset.x-k8s.io' not found"
 }
 ```
+
+The `rerun_result` field tracks test re-run verification:
+
+| Value | Meaning |
+|---|---|
+| `pass` | Test passed on re-run → reclassified as `intermittent` |
+| `fail_same` | Test failed with same error → classification confirmed |
+| `fail_different` | Test failed with different error → re-investigated |
+| `could_not_run` | Test couldn't execute (import error, missing fixture) |
+| `no_cluster` | No cluster access available for re-run |
+| `skipped` | Re-run limit reached (max 10 per analysis) |
 
 | Category | RP Defect Code | When |
 |---|---|---|
@@ -372,17 +385,21 @@ The entrypoint orchestrates a multi-step analysis pipeline:
 
 1. **Clone architecture-context** — fetches version-specific RHOAI architecture docs (CRDs, RBAC, ports, dependencies)
 2. **Clone opendatahub-tests** — checks out the version-specific branch for test source code review
-3. **Cluster login** — `oc login` to the test cluster for live pod/event inspection (if credentials provided)
-4. **Claude analysis** — follows a strict 6-step process:
-   - Load architecture context for the RHOAI version
-   - Inspect live cluster (pods, ISVCs, events, logs)
-   - Retrieve similar past failures from memory
-   - Read the actual test source code before classifying
-   - Classify each failure with explicit rules for infrastructure vs. product vs. automation bugs
-   - Write results, validate, generate report, store learnings
-5. **Validate** — `validate_results.py --fix` normalizes classification names, clamps confidence, fills RP defect codes
-6. **Report** — `generate_report.py` produces a standalone HTML report with summary charts and per-failure cards
-7. **Store** — `store_run.py` persists run summary and learnings to memory for future few-shot retrieval
+3. **Import memory** — loads persistent learnings from GitLab repo into the container
+4. **Cluster login** — `oc login` to the test cluster for live pod/event inspection (if credentials provided)
+5. **Claude analysis** — follows a strict 8-step process:
+   - **Step 0**: Fetch full Jenkins console log via `get_build_log` MCP tool (primary data source — RP logs are often incomplete)
+   - **Step 1**: Load architecture context for the RHOAI version (CRDs, RBAC, ports, dependencies)
+   - **Step 2**: Inspect live cluster (pods, ISVCs, events, logs) using read-only `oc` commands
+   - **Step 3**: Retrieve similar past failures from memory layer for few-shot guidance
+   - **Step 4**: Read the actual test source code from opendatahub-tests before classifying
+   - **Step 5**: Classify each failure with explicit rules for infrastructure vs. product vs. automation bugs
+   - **Step 6**: Re-run every failing test on the cluster using `uv run pytest` to verify classification (pass → intermittent, fail same → confirmed, fail different → re-investigate)
+   - **Step 7**: Write results, validate, generate report, store learnings
+6. **Validate** — `validate_results.py --fix` normalizes classification names, clamps confidence, fills RP defect codes
+7. **Report** — `generate_report.py` produces a standalone HTML report with summary charts, re-run verification results, and per-failure cards
+8. **Store** — `store_run.py` persists run summary and learnings to memory for future few-shot retrieval
+9. **Export memory** — writes updated learnings back to the GitLab repo for cross-run persistence
 
 ## Read-Only Cluster Access
 
