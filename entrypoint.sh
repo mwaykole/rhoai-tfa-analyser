@@ -226,13 +226,37 @@ D. Cascade failures: when a class-scoped fixture fails and multiple tests in tha
    with the same error, give them ALL the same classification as the primary failure.
    Do NOT mix classifications (e.g. primary=infrastructure_issue but cascades=product_bug).
 
-STEP 6: After classification, you MUST do these steps in order:
+STEP 6: VERIFY product_bug and automation_bug classifications by RE-RUNNING the failing test.
+$(if [[ "$CLUSTER_LOGGED_IN" == "true" ]]; then cat << 'RERUN_INSTRUCTIONS'
+You have cluster access — use it to verify your classifications:
+For each failure classified as product_bug or automation_bug (skip infrastructure_issue / intermittent):
+  a) cd to the test repo: cd /home/claudio/tfa-plugin/opendatahub-tests
+  b) Install dependencies if not already done: uv sync 2>/dev/null || pip install -e . 2>/dev/null || true
+  c) Run ONLY the specific failing test (not the whole suite):
+     uv run pytest <test_file>::<test_class>::<test_function> -x -v --timeout=300 2>&1 || true
+     Example: uv run pytest tests/model_serving/model_server/kserve/ingress/test_route_visibility.py::TestRestRawDeploymentRoutes::test_disabled_rest_raw_deployment_exposed_route -x -v --timeout=300 2>&1 || true
+  d) Analyze the re-run result:
+     - If the test PASSES on re-run: reclassify as 'intermittent' (flaky test)
+     - If the test FAILS with the SAME error: confirms your classification (product_bug or automation_bug)
+     - If the test FAILS with a DIFFERENT error: investigate the new error and update classification
+     - If the test cannot run (import errors, missing fixtures): note this but keep original classification
+  e) Add these fields to the result entry:
+     - rerun_result: 'pass', 'fail_same', 'fail_different', 'could_not_run'
+     - rerun_error: the error message from the re-run (empty if passed)
+  f) Only re-run up to 5 tests total to keep analysis time reasonable.
+IMPORTANT: Always append '|| true' to the pytest command so the script does not exit on test failure.
+RERUN_INSTRUCTIONS
+else echo "No cluster access — skip test re-run verification. Set rerun_result to 'no_cluster' for all entries."; fi)
+
+STEP 7: After classification and verification, you MUST do these steps in order:
 1. Write the classification results array to ${REPORT_DIR}/tfa_results.json
    Each entry MUST include these fields:
    - test_name, classification, severity, confidence, root_cause,
      error_message, fix_suggestion, component
    - test_file: the path of the test source file you reviewed (e.g. tests/model_serving/model_server/kserve/test_foo.py)
      If you could not find/read the test file, set test_file to empty string.
+   - rerun_result: 'pass', 'fail_same', 'fail_different', 'could_not_run', or 'no_cluster' / 'skipped'
+   - rerun_error: the error from re-run (empty if passed or skipped)
 2. Run: python3 ${SCRIPTS}/validate_results.py --results ${REPORT_DIR}/tfa_results.json --fix
 3. Run: python3 ${SCRIPTS}/generate_report.py --results ${REPORT_DIR}/tfa_results.json --output ${REPORT_DIR}/tfa_report.html
 4. Run: python3 ${SCRIPTS}/store_run.py --results ${REPORT_DIR}/tfa_results.json

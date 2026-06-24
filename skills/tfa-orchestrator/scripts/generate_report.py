@@ -173,6 +173,18 @@ def render_html(results: list[dict], launch_id: str = "", launch_name: str = "")
             root_cause = r.get("root_cause", "No root cause determined")
             test_file = r.get("test_file", "")
 
+            rerun_result = r.get("rerun_result", "")
+            rerun_error = r.get("rerun_error", "")
+
+            RERUN_LABELS = {
+                "pass": ("Re-run: PASSED", "#16a34a"),
+                "fail_same": ("Re-run: FAILED (same error)", "#dc2626"),
+                "fail_different": ("Re-run: FAILED (different error)", "#ea580c"),
+                "could_not_run": ("Re-run: Could not execute", "#6b7280"),
+                "no_cluster": ("Re-run: No cluster access", "#6b7280"),
+                "skipped": ("Re-run: Skipped", "#6b7280"),
+            }
+
             detail_rows = ""
             if key_error:
                 detail_rows += f'<div class="detail"><strong>Error:</strong> <code>{esc(key_error)}</code></div>'
@@ -180,6 +192,11 @@ def render_html(results: list[dict], launch_id: str = "", launch_name: str = "")
                 detail_rows += f'<div class="detail"><strong>Fix:</strong> {esc(recommendation)}</div>'
             if test_file:
                 detail_rows += f'<div class="detail"><strong>Test file reviewed:</strong> <code>{esc(test_file)}</code></div>'
+            if rerun_result and rerun_result not in ("", "skipped", "no_cluster"):
+                rerun_label, rerun_color = RERUN_LABELS.get(rerun_result, (f"Re-run: {rerun_result}", "#6b7280"))
+                detail_rows += f'<div class="detail"><strong style="color:{rerun_color}">{esc(rerun_label)}</strong></div>'
+                if rerun_error:
+                    detail_rows += f'<div class="detail"><strong>Re-run error:</strong> <code>{esc(rerun_error)}</code></div>'
             if notes:
                 detail_rows += f'<div class="detail"><strong>Notes:</strong> {esc(notes)}</div>'
 
