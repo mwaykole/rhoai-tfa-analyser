@@ -192,8 +192,9 @@ def store_run(results: list[dict], launch_id: str = "", source: str = "") -> dic
         by_classification[cls] = by_classification.get(cls, 0) + 1
         by_severity[sev] = by_severity.get(sev, 0) + 1
 
-        suite = entry.get("suite", entry.get("parent", "generic"))
-        comp_path = resolve_component_path(suite)
+        comp = entry.get("component", "")
+        suite = entry.get("suite", entry.get("parent", ""))
+        comp_path = resolve_component_path(comp) if comp else resolve_component_path(suite) if suite else "generic"
         action = increment_or_store(comp_path, entry)
         learning_actions.append(action)
 
