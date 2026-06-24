@@ -146,6 +146,21 @@ FULL_PROMPT="${PROMPT}
 
 IMPORTANT ANALYSIS STEPS — follow in order:
 
+STEP 0: FETCH THE FULL JENKINS CONSOLE LOG — this is your PRIMARY data source.
+ReportPortal data is often incomplete or missing log details. You MUST get the actual Jenkins console output.
+The Jenkins URL in the prompt looks like: https://jenkins.../job/<path>/job/<path>/.../job/<name>/<build_number>/
+To fetch it, use the Jenkins MCP tool 'get_build_log':
+  - Extract job_path: take all segments between /job/ and join with '/'. Example:
+    URL: https://jenkins.../job/rhoai/job/3.5-ea.2/job/selfmanaged/job/cli/job/aws/job/rhoai-tier1/3/
+    job_path = 'rhoai/3.5-ea.2/selfmanaged/cli/aws/rhoai-tier1'
+    build_number = 3
+  - Call: get_build_log(job_path='rhoai/3.5-ea.2/selfmanaged/cli/aws/rhoai-tier1', build_number=3)
+  - The console log contains the FULL pytest output with stack traces, fixture errors, and skip reasons.
+  - If the log is very large, search for 'FAILED', 'ERROR', 'model_server', and 'fixture' sections.
+  - DO NOT rely solely on ReportPortal for error details — RP often truncates or omits critical log lines.
+  - If get_build_log fails, try check_build_status to verify the build exists, then retry.
+This step is CRITICAL — without the Jenkins console log, your analysis will be incomplete.
+
 STEP 1: Load architecture context BEFORE classifying.
 For each component being analyzed, run the architecture lookup to understand CRDs, ports,
 RBAC, dependencies, and data flows. This context is critical for accurate classification.
@@ -232,25 +247,30 @@ D. Cascade failures: when a class-scoped fixture fails and multiple tests in tha
    with the same error, give them ALL the same classification as the primary failure.
    Do NOT mix classifications (e.g. primary=infrastructure_issue but cascades=product_bug).
 
-STEP 6: VERIFY product_bug and automation_bug classifications by RE-RUNNING the failing test.
+STEP 6: MANDATORY — RE-RUN every failing test to verify your classification.
 $(if [[ "$CLUSTER_LOGGED_IN" == "true" ]]; then cat << 'RERUN_INSTRUCTIONS'
-You have cluster access — use it to verify your classifications:
-For each failure classified as product_bug or automation_bug (skip infrastructure_issue / intermittent):
-  a) cd to the test repo: cd /home/claudio/tfa-plugin/opendatahub-tests
-  b) Install dependencies if not already done: uv sync 2>/dev/null || pip install -e . 2>/dev/null || true
-  c) Run ONLY the specific failing test (not the whole suite):
+You MUST re-run EVERY failing test on the cluster. This is NOT optional. Do NOT skip this step.
+For EACH failure (product_bug, automation_bug, AND infrastructure_issue):
+  a) cd /home/claudio/tfa-plugin/opendatahub-tests
+  b) Install dependencies ONCE at the start:
+     uv sync 2>/dev/null || pip install -e . 2>/dev/null || true
+  c) Run the specific failing test:
      uv run pytest <test_file>::<test_class>::<test_function> -x -v --timeout=300 2>&1 || true
-     Example: uv run pytest tests/model_serving/model_server/kserve/ingress/test_route_visibility.py::TestRestRawDeploymentRoutes::test_disabled_rest_raw_deployment_exposed_route -x -v --timeout=300 2>&1 || true
-  d) Analyze the re-run result:
-     - If the test PASSES on re-run: reclassify as 'intermittent' (flaky test)
-     - If the test FAILS with the SAME error: confirms your classification (product_bug or automation_bug)
-     - If the test FAILS with a DIFFERENT error: investigate the new error and update classification
-     - If the test cannot run (import errors, missing fixtures): note this but keep original classification
-  e) Add these fields to the result entry:
-     - rerun_result: 'pass', 'fail_same', 'fail_different', 'could_not_run'
-     - rerun_error: the error message from the re-run (empty if passed)
-  f) Only re-run up to 5 tests total to keep analysis time reasonable.
-IMPORTANT: Always append '|| true' to the pytest command so the script does not exit on test failure.
+     IMPORTANT: You MUST construct the full pytest node ID from the test_file, class name,
+     and function name. Example:
+       uv run pytest tests/model_serving/model_server/kserve/ingress/test_route_visibility.py::TestRestRawDeploymentRoutes::test_disabled_rest_raw_deployment_exposed_route -x -v --timeout=300 2>&1 || true
+     Always append '|| true' so the script continues even if pytest fails.
+  d) Record the result:
+     - Test PASSES on re-run → reclassify as 'intermittent'
+     - Test FAILS with SAME error → confirms your classification
+     - Test FAILS with DIFFERENT error → investigate and update classification
+     - Test cannot run (import error, missing fixture, dependency issue) → set 'could_not_run'
+  e) Set these fields in EVERY result entry:
+     - rerun_result: MUST be one of: 'pass', 'fail_same', 'fail_different', 'could_not_run'
+     - rerun_error: the error from re-run (empty string if passed)
+  f) Re-run up to 10 tests. If more than 10 failures, re-run the first 10 and set 'skipped' for the rest.
+DO NOT write tfa_results.json until ALL re-runs are complete.
+DO NOT leave rerun_result empty or missing — every entry MUST have it.
 RERUN_INSTRUCTIONS
 else echo "No cluster access — skip test re-run verification. Set rerun_result to 'no_cluster' for all entries."; fi)
 
